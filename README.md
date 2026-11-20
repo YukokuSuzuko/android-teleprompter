@@ -39,6 +39,8 @@
 - [Jetpack Compose & Material 3](https://developer.android.com/compose) (Apache-2.0) — Android 声明式 UI 框架
 - [pinyin4j](https://github.com/belerweb/pinyin4j) (GPL-2.0) — 汉字转拼音工具
 
----
+## 开源协议
 
-Copyright © 2026 **YukokuSuzuko**. All rights reserved.
+本项目基于 [GNU General Public License v3.0 (GPL-3.0)](LICENSE) 协议开源。
+
+Copyright © 2026 **YukokuSuzuko**.
