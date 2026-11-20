@@ -43,11 +43,34 @@
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
+## 自动测试、签名与发布
+
+- [Android CI](.github/workflows/android-ci.yml)：每次 PR、main 推送或手动运行时，校验并下载固定版本的 sherpa-onnx AAR，执行 `testDebugUnitTest` 和 `compileDebugKotlin`。**这不是包含语音模型的可安装 APK**；CI 不会上传或发布缺少模型的假安装包。
+- [Build signed release APK](.github/workflows/signed-release.yml)：在 GitHub Actions 页面**手动触发**，下载并校验完整中文语音模型，使用**你自己的正式发布密钥**进行签名、测试和打包，验证签名与 APK 内模型文件后，生成仅保留 7 天的 Actions 构建产物。此流程**不会自动覆盖现有 v1.2 Release 或发布到商店**。
+- 正式发布前，必须妥善保存独立的正式签名密钥及密码。此前的 v1.2 APK 使用 debug 签名；**首次改成正式密钥签名的 APK 通常不能覆盖安装原有 debug 签名 APK**，用户可能需要卸载旧版（会损失未备份的本地台词和设置）。请先做好数据迁移/备份方案，并在首个正式版开始长期复用同一签名密钥。
+
+### 配置手动签名构建
+
+在 GitHub 仓库的 Actions secrets 中设置如下内容（不要提交进 Git，也不要放到 PR 或 Issue）：
+
+| Secret | 含义 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | **独立的正式 Android keystore 文件**，整文件 Base64 编码（不要使用 debug.keystore） |
+| `ANDROID_STORE_PASSWORD` | keystore 密码 |
+| `ANDROID_KEY_ALIAS` | keystore 中的正式签名别名 |
+| `ANDROID_KEY_PASSWORD` | 签名密钥密码 |
+| `MODEL_BUNDLE_URL` | 私有或可信 HTTPS 地址，指向 `asr_zh.tar.gz`，压缩包根目录仅含 `encoder.int8.onnx`、`decoder.onnx`、`joiner.int8.onnx` 三个文件 |
+| `MODEL_BUNDLE_SHA256` | 上述压缩包的 SHA-256（64 位十六进制） |
+
+`tokens.txt` 已在仓库中；`sherpa-onnx-2.0.1.aar` 从上游正式 Release 下载并核对 SHA-256。构建前的校验不通过就会停止，不会发布半成品。
+
+本地打包正式版也需提供四个环境变量：`ANDROID_KEYSTORE_PATH`（keystore 的本地路径）、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。缺失任意变量时，`assembleRelease` 只会产生**未签名产物**，不能作为正式 APK 发布，绝不会自动使用 debug 密钥。
+
 ## 致谢与第三方开源组件
 
 - [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0) — 离线流式语音识别引擎
 - [Jetpack Compose & Material 3](https://developer.android.com/compose) (Apache-2.0) — Android 声明式 UI 框架
-- [pinyin4j](https://github.com/belerweb/pinyin4j) (GPL-2.0) — 汉字转拼音工具
+- [pinyin4j 2.5.1](https://github.com/belerweb/pinyin4j) (BSD，见该版本上游 POM 的许可证声明) — 汉字转拼音工具
 
 ## 开源协议
 
