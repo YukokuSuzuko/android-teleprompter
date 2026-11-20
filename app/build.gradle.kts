@@ -3,6 +3,19 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
+// Release signing is opt-in. Never ship APKs signed with Android's shared debug key.
+// CI provides these values from GitHub Actions secrets; local builds can use the same env vars.
+val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("ANDROID_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(
+  releaseKeystorePath,
+  releaseStorePassword,
+  releaseKeyAlias,
+  releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
   namespace = "io.github.yukokusuzuko.teleprompter"
   compileSdk = 36
@@ -21,10 +34,23 @@ android {
     noCompress += listOf("onnx", "txt")
   }
 
+  signingConfigs {
+    if (hasReleaseSigning) {
+      create("release") {
+        storeFile = file(releaseKeystorePath!!)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
+    }
+  }
+
   buildTypes {
     release {
       isMinifyEnabled = false
-      signingConfig = signingConfigs.getByName("debug")
+      // Without all four values, release outputs are intentionally unsigned.
+      // Never publish them; the release workflow verifies signing before upload.
+      if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
