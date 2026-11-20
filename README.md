@@ -28,6 +28,10 @@
   - 6 款等宽等高 3×2 MD3 主题色（琥珀金 / 莫奈蓝 / 森林青 / 经典紫 / 珊瑚橙 / 三阶黑白明度「极简白」）；
   - `MD3-C`「叠色几何对话 · 暖琥珀」自适应矢量图标，完整支持 Android 13+ Material You 单色主题图标。
 
+## 下载安装
+
+前往 [Releases 页面](https://github.com/YukokuSuzuko/android-teleprompter/releases/latest) 下载最新的 `android-teleprompter-v1.2-arm64.apk`（已内置离线中文语音识别模型，安装即用，支持 Android 8.0+ / arm64-v8a 设备）。
+
 ## 本地编译准备（离线模型未入库）
 
 由于 `encoder.int8.onnx`（153 MB）超过 GitHub 单文件 100 MB 限制，模型文件与 `sherpa-onnx` AAR 已在 `.gitignore` 中排除。本地编译前请准备：
