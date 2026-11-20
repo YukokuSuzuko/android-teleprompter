@@ -285,6 +285,23 @@ fun PrompterScreen(
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var targetScrollY by remember { mutableFloatStateOf(0f) }
 
+    // Notify user when toggling play/pause (e.g. via Volume+) while in fullscreen hidden-HUD mode
+    var seenInitialFollowState by remember { mutableStateOf(false) }
+    LaunchedEffect(isActivelyFollowing) {
+        if (!seenInitialFollowState) {
+            seenInitialFollowState = true
+            return@LaunchedEffect
+        }
+        if (!controlsVisible) {
+            val msg = if (isActivelyFollowing) {
+                if (isVoiceMode) "已开始语音跟读" else "已开始自动滚动"
+            } else {
+                "已暂停"
+            }
+            pushBanner(msg, kind = BannerKind.INFO, durationMs = 1200L)
+        }
+    }
+
     // Notify user when manually dragging while actively following/scrolling
     LaunchedEffect(scrollState.isScrollInProgress) {
         if (scrollState.isScrollInProgress && liveFollowingState && !latestTouchLocked) {
@@ -509,6 +526,28 @@ fun PrompterScreen(
             }
         }
 
+        // Auto-balance horizontal CJK line-wrap remainder 50/50 so left & right gaps stay strictly symmetric
+        val balancedHorizontalShiftPx = remember(
+            textLayout,
+            settings.activeFontSizeSp,
+            settings.activeHorizontalMarginDp
+        ) {
+            val layout = textLayout
+            if (layout == null || layout.lineCount <= 1) {
+                0f
+            } else {
+                var maxLineW = 0f
+                for (i in 0 until layout.lineCount) {
+                    val w = layout.getLineRight(i) - layout.getLineLeft(i)
+                    if (w > maxLineW) maxLineW = w
+                }
+                val boxW = layout.size.width.toFloat()
+                val fontPx = with(density) { fontSize.toPx() }
+                val remainder = (boxW - maxLineW).coerceIn(0f, fontPx * 2.0f)
+                remainder * 0.5f
+            }
+        }
+
         // ==================== MIRRORABLE SCRIPT + FOCUS MARKER LAYER ====================
         Box(
             modifier = Modifier
@@ -524,7 +563,8 @@ fun PrompterScreen(
             // Subtle monochrome spotlight band behind the active line in WHITE theme
             if (isWhiteTheme && settings.lineHighlight && lineVisible) {
                 val bandHeightDp = with(density) { activeLineHeightPx.toDp() }
-                val bandHorizontalPad = (horizontalMargin - 6.dp).coerceAtLeast(6.dp)
+                val balancedSideDp = horizontalMargin + with(density) { balancedHorizontalShiftPx.toDp() }
+                val bandHorizontalPad = (balancedSideDp - 6.dp).coerceAtLeast(6.dp)
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(0, activeTopPx.roundToInt()) }
@@ -562,6 +602,9 @@ fun PrompterScreen(
                         lineHeight = fontSize * settings.lineHeightMultiplier,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer {
+                                translationX = balancedHorizontalShiftPx
+                            }
                             .pointerInput(script) {
                                 detectTapGestures(
                                     onTap = { tapOffset ->
@@ -586,13 +629,15 @@ fun PrompterScreen(
                 }
             }
 
-            // Dynamic left-edge focus marker scaled & vertically centered to the exact active line
+            // Dynamic left-edge focus marker scaled, centered, and tracking balanced text left edge
             if (lineVisible) {
                 val markerHeightPx = (fontPx * 0.72f)
                     .coerceIn(with(density) { 20.dp.toPx() }, activeLineHeightPx * 0.85f)
                 val markerHeightDp = with(density) { markerHeightPx.toDp() }
                 val markerWidthDp = (3.5f + ((settings.activeFontSizeSp - 32f) / 48f).coerceIn(0f, 1f) * 2.5f).dp
-                val markerMarginPx = with(density) { 5.dp.toPx() }
+                val textLeftPx = with(density) { horizontalMargin.toPx() } + balancedHorizontalShiftPx
+                val markerMarginPx = (textLeftPx - with(density) { (markerWidthDp + 6.dp).toPx() })
+                    .coerceAtLeast(with(density) { 4.dp.toPx() })
                 val lineCenterPx = activeTopPx + activeLineHeightPx * 0.5f
                 val markerYOffsetPx = (lineCenterPx - markerHeightPx * 0.5f).roundToInt()
 
@@ -752,9 +797,11 @@ fun PrompterScreen(
             }
         }
 
-        // ==================== FULLSCREEN 2DP BOTTOM PROGRESS BAR & SUBTLE RESTORE BUTTON ====================
+        // ==================== FULLSCREEN 2DP BOTTOM PROGRESS BAR, TALLY DOT & RESTORE BUTTON ====================
         if (!controlsVisible) {
-            // Ultra-thin 2dp progress indicator hugging the bottom edge
+            val fullscreenStatusColor = if (isActivelyFollowing) PrompterListeningGreen else cs.primary
+
+            // Ultra-thin 2dp progress indicator hugging the bottom edge (green = live, dim theme = paused)
             if (settings.showFullscreenProgress) {
                 val smoothProgress by animateFloatAsState(
                     targetValue = progressFraction.coerceIn(0f, 1f),
@@ -772,7 +819,48 @@ fun PrompterScreen(
                         modifier = Modifier
                             .fillMaxWidth(smoothProgress)
                             .fillMaxHeight()
-                            .background(cs.primary.copy(alpha = 0.52f))
+                            .background(
+                                fullscreenStatusColor.copy(
+                                    alpha = if (isActivelyFollowing) 0.62f else 0.34f
+                                )
+                            )
+                    )
+                }
+            }
+
+            // Bottom-left subtle tally status indicator (shows live/paused state at a glance; tap toggles)
+            Surface(
+                onClick = onToggleFollowOrPlay,
+                color = cs.surfaceContainerHigh.copy(alpha = 0.38f),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 14.dp, bottom = 14.dp)
+                    .height(32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(fullscreenStatusColor)
+                    )
+                    Text(
+                        text = when {
+                            isActivelyFollowing && isVoiceMode -> "跟读中"
+                            isActivelyFollowing -> "滚动中"
+                            else -> "已暂停"
+                        },
+                        color = cs.onSurface.copy(alpha = 0.72f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                 }
             }
@@ -1089,8 +1177,16 @@ fun PrompterScreen(
         val modeLabel = if (settings.isLandscape) "横屏" else "竖屏"
         val marginRange = if (settings.isLandscape) 16f..220f else 8f..96f
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        val innerScrollState = rememberScrollState()
         val isExpanded = sheetState.currentValue == SheetValue.Expanded ||
             sheetState.targetValue == SheetValue.Expanded
+
+        // Reset inner scroll to top when collapsing back to half-screen so Font Size & Margin stay visible
+        LaunchedEffect(isExpanded) {
+            if (!isExpanded && innerScrollState.value != 0) {
+                innerScrollState.scrollTo(0)
+            }
+        }
 
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },
@@ -1103,19 +1199,12 @@ fun PrompterScreen(
                 BottomSheetDefaults.DragHandle(color = cs.outline)
             }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Sheet Title Row with explicit Expand/Collapse + Done pills
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Sticky Non-Scrolling Sheet Header (dragging anywhere here directly expands/collapses sheet)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1168,6 +1257,17 @@ fun PrompterScreen(
                         }
                     }
                 }
+
+                // Body scroll is enabled ONLY when Expanded so half-screen upward drags ALWAYS smoothly expand the sheet
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .verticalScroll(innerScrollState, enabled = isExpanded)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
 
                 // ---------- Group 1: Typography & Layout ----------
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1606,6 +1706,7 @@ fun PrompterScreen(
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
+            }
             }
         }
     }
