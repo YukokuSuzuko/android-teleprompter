@@ -31,13 +31,10 @@ import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -106,10 +103,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.invalidateDraw
@@ -1223,29 +1219,16 @@ fun PrompterScreen(
             val halfHeight = (viewportHeightDp * (if (settings.isLandscape) 0.62f else 0.52f))
                 .coerceAtLeast(260.dp)
             val fullHeight = (viewportHeightDp * 0.92f).coerceAtLeast(halfHeight)
+            val fullHeightPx = with(density) { fullHeight.toPx() }
+            val halfHeightPx = with(density) { halfHeight.toPx() }
+            val collapsedOffsetPx = (fullHeightPx - halfHeightPx).coerceAtLeast(0f)
+
             val innerScrollState = rememberScrollState()
-            var headerDragDeltaPx by remember { mutableFloatStateOf(0f) }
-
-            val animatedBaseHeight by animateDpAsState(
-                targetValue = if (sheetExpanded) fullHeight else halfHeight,
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                label = "settingsSheetHeight"
-            )
-            val currentSheetHeight = (animatedBaseHeight - with(density) { headerDragDeltaPx.toDp() })
-                .coerceIn(160.dp, fullHeight)
-
-            // Non-consuming nested scroll listener: auto-expands from half-screen on first upward swipe
-            // while returning Offset.Zero so inner verticalScroll responds IMMEDIATELY on the very first swipe!
-            val autoExpandConnection = remember {
-                object : NestedScrollConnection {
-                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                        if (source == NestedScrollSource.UserInput && available.y < -8f && !sheetExpanded) {
-                            sheetExpanded = true
-                        }
-                        return Offset.Zero
-                    }
-                }
+            // Pure GPU translationY Animatable: fixed height measured ONCE, 0 re-layouts during animation -> locked 120fps!
+            val sheetOffsetY = remember(collapsedOffsetPx) {
+                Animatable(if (sheetExpanded) 0f else collapsedOffsetPx)
             }
+            var headerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
             Surface(
                 color = cs.surfaceContainerLow,
@@ -1255,37 +1238,91 @@ fun PrompterScreen(
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(currentSheetHeight)
+                    .height(fullHeight)
+                    .graphicsLayer {
+                        translationY = sheetOffsetY.value
+                    }
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Dedicated Drag Handle + Sticky Header zone (tracks finger directly to expand/collapse/dismiss)
+                    // Dedicated Drag Handle + Sticky Header zone using window-space coordinates (zero feedback twitch!)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .draggable(
-                                orientation = Orientation.Vertical,
-                                state = rememberDraggableState { delta ->
-                                    headerDragDeltaPx = (headerDragDeltaPx + delta).coerceIn(-500f, 600f)
-                                },
-                                onDragStopped = { velocity ->
-                                    val upThreshold = with(density) { 40.dp.toPx() }
-                                    val downThreshold = with(density) { 60.dp.toPx() }
-                                    when {
-                                        headerDragDeltaPx < -upThreshold || velocity < -600f -> {
-                                            sheetExpanded = true
+                            .onGloballyPositioned { headerCoords = it }
+                            .pointerInput(fullHeightPx, collapsedOffsetPx) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val startCoords = headerCoords ?: return@awaitEachGesture
+                                    var prevWindowY = startCoords.localToWindow(down.position).y
+                                    var totalDeltaY = 0f
+                                    var lastVelocityY = 0f
+                                    var lastTimeMs = down.uptimeMillis
+                                    var dragStarted = false
+                                    val touchSlop = viewConfiguration.touchSlop
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+
+                                        val curCoords = headerCoords ?: break
+                                        val curWindowY = curCoords.localToWindow(change.position).y
+                                        val dy = curWindowY - prevWindowY
+                                        prevWindowY = curWindowY
+                                        totalDeltaY += dy
+
+                                        if (!dragStarted && abs(totalDeltaY) > touchSlop) {
+                                            dragStarted = true
                                         }
-                                        headerDragDeltaPx > downThreshold || velocity > 600f -> {
-                                            if (sheetExpanded) {
-                                                sheetExpanded = false
-                                                coroutineScope.launch { innerScrollState.scrollTo(0) }
-                                            } else {
+                                        if (dragStarted) {
+                                            change.consume()
+                                            val dtMs = (change.uptimeMillis - lastTimeMs).coerceAtLeast(1L)
+                                            lastVelocityY = dy * 1000f / dtMs
+                                            lastTimeMs = change.uptimeMillis
+                                            val nextOffset = (sheetOffsetY.value + dy).coerceIn(0f, fullHeightPx)
+                                            coroutineScope.launch { sheetOffsetY.snapTo(nextOffset) }
+                                        }
+                                    }
+
+                                    if (dragStarted) {
+                                        val current = sheetOffsetY.value
+                                        val dismissThreshold = collapsedOffsetPx + (fullHeightPx - collapsedOffsetPx) * 0.35f
+                                        when {
+                                            lastVelocityY < -500f -> {
+                                                sheetExpanded = true
+                                                coroutineScope.launch {
+                                                    sheetOffsetY.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                                                }
+                                            }
+                                            lastVelocityY > 500f -> {
+                                                if (current < collapsedOffsetPx * 0.85f) {
+                                                    sheetExpanded = false
+                                                    coroutineScope.launch {
+                                                        sheetOffsetY.animateTo(collapsedOffsetPx, tween(200, easing = FastOutSlowInEasing))
+                                                    }
+                                                } else {
+                                                    showSettingsSheet = false
+                                                }
+                                            }
+                                            current < collapsedOffsetPx * 0.5f -> {
+                                                sheetExpanded = true
+                                                coroutineScope.launch {
+                                                    sheetOffsetY.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
+                                                }
+                                            }
+                                            current > dismissThreshold -> {
                                                 showSettingsSheet = false
+                                            }
+                                            else -> {
+                                                sheetExpanded = false
+                                                coroutineScope.launch {
+                                                    sheetOffsetY.animateTo(collapsedOffsetPx, tween(200, easing = FastOutSlowInEasing))
+                                                }
                                             }
                                         }
                                     }
-                                    headerDragDeltaPx = 0f
                                 }
-                            ),
+                            },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         BottomSheetDefaults.DragHandle(color = cs.outline)
@@ -1317,8 +1354,13 @@ fun PrompterScreen(
                                     onClick = {
                                         val next = !sheetExpanded
                                         sheetExpanded = next
-                                        if (!next) {
-                                            coroutineScope.launch { innerScrollState.scrollTo(0) }
+                                        coroutineScope.launch {
+                                            if (next) {
+                                                sheetOffsetY.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+                                            } else {
+                                                sheetOffsetY.animateTo(collapsedOffsetPx, tween(220, easing = FastOutSlowInEasing))
+                                                innerScrollState.scrollTo(0)
+                                            }
                                         }
                                     },
                                     color = cs.secondaryContainer,
@@ -1349,12 +1391,11 @@ fun PrompterScreen(
                         }
                     }
 
-                    // Always-enabled silky scroll body — zero Material3 ModalBottomSheet spring-tail blocking
+                    // Pure native verticalScroll body: ZERO nested-scroll fighting, ZERO re-layout, 120fps silk!
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .nestedScroll(autoExpandConnection)
                             .verticalScroll(innerScrollState)
                             .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1797,6 +1838,11 @@ fun PrompterScreen(
                             }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     )
+                }
+
+                // Bottom clearance when collapsed to half-screen so every item stays scrollable into view
+                if (!sheetExpanded) {
+                    Spacer(modifier = Modifier.height((fullHeight - halfHeight).coerceAtLeast(0.dp)))
                 }
             }
                 }
