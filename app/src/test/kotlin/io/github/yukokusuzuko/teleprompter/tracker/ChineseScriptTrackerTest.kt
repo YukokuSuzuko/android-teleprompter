@@ -1,4 +1,4 @@
-package com.teleprompter.dev.tracker
+package io.github.yukokusuzuko.teleprompter.tracker
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -1,30 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:endX="85.84757"
-                android:endY="92.4963"
-                android:startX="42.9492"
-                android:startY="49.59793"
-                android:type="linear">
-                <item
-                    android:color="#44000000"
-                    android:offset="0.0" />
-                <item
-                    android:color="#00000000"
-                    android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
+
+    <!-- Scheme C: Camera Viewfinder Corner Brackets (inside 66dp safe zone: 24..84) -->
     <path
-        android:fillColor="#FFFFFF"
-        android:fillType="nonZero"
-        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
-        android:strokeWidth="1"
-        android:strokeColor="#00000000" />
+        android:pathData="M24,37 L24,28 Q24,24 28,24 L37,24"
+        android:strokeColor="#8D91A0"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M71,24 L80,24 Q84,24 84,28 L84,37"
+        android:strokeColor="#8D91A0"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M24,71 L24,80 Q24,84 28,84 L37,84"
+        android:strokeColor="#8D91A0"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M71,84 L80,84 Q84,84 84,80 L84,71"
+        android:strokeColor="#8D91A0"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Top already-read dimmed line -->
+    <path
+        android:fillColor="#636775"
+        android:pathData="M38,38 L70,38 A3,3 0 0,1 70,44 L38,44 A3,3 0 0,1 38,38 Z" />
+
+    <!-- Center highlighted active cue line (Amber Gold) -->
+    <path
+        android:fillColor="#FFE066"
+        android:pathData="M35.25,50 L72.75,50 A4.25,4.25 0 0,1 72.75,58.5 L35.25,58.5 A4.25,4.25 0 0,1 35.25,50 Z" />
+
+    <!-- Bottom upcoming white line -->
+    <path
+        android:fillColor="#F4F5F8"
+        android:pathData="M41,64.5 L67,64.5 A3,3 0 0,1 67,70.5 L41,70.5 A3,3 0 0,1 41,64.5 Z" />
 </vector>

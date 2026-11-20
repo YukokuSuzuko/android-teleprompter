@@ -1,4 +1,4 @@
-package com.teleprompter.dev.tracker
+package io.github.yukokusuzuko.teleprompter.tracker
 
 import net.sourceforge.pinyin4j.PinyinHelper
 import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType

@@ -1,4 +1,4 @@
-package com.teleprompter.dev.asr
+package io.github.yukokusuzuko.teleprompter.asr
 
 import android.annotation.SuppressLint
 import android.content.Context

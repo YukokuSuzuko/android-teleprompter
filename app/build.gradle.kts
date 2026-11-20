@@ -4,14 +4,14 @@ plugins {
 }
 
 android {
-  namespace = "com.teleprompter.dev"
+  namespace = "io.github.yukokusuzuko.teleprompter"
   compileSdk = 36
   defaultConfig {
-    applicationId = "com.teleprompter.dev"
+    applicationId = "io.github.yukokusuzuko.teleprompter"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.1"
     ndk {
       abiFilters += "arm64-v8a"
     }

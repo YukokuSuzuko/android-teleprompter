@@ -1,13 +1,17 @@
-package com.teleprompter.dev.ui
+/*
+ * Copyright (c) 2026 YukokuSuzuko
+ */
+
+package io.github.yukokusuzuko.teleprompter.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.teleprompter.dev.asr.StreamingAsrEngine
-import com.teleprompter.dev.data.FollowMode
-import com.teleprompter.dev.data.PrompterSettings
-import com.teleprompter.dev.data.ScriptStore
-import com.teleprompter.dev.tracker.ChineseScriptTracker
+import io.github.yukokusuzuko.teleprompter.asr.StreamingAsrEngine
+import io.github.yukokusuzuko.teleprompter.data.FollowMode
+import io.github.yukokusuzuko.teleprompter.data.PrompterSettings
+import io.github.yukokusuzuko.teleprompter.data.ScriptStore
+import io.github.yukokusuzuko.teleprompter.tracker.ChineseScriptTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -79,7 +83,6 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
                 _uiState.update {
                     it.copy(isModelReady = true, modelStatus = "离线中文模型已就绪")
                 }
-                // Auto-start listening if user already entered prompter while model was loading
                 val state = _uiState.value
                 if (state.isPrompterActive && state.settings.followMode != FollowMode.UNIFORM_SCROLL && state.isListening) {
                     startAsrListeningInternal()

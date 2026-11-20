@@ -1,4 +1,8 @@
-package com.teleprompter.dev
+/*
+ * Copyright (c) 2026 YukokuSuzuko
+ */
+
+package io.github.yukokusuzuko.teleprompter
 
 import android.Manifest
 import android.content.pm.ActivityInfo
@@ -20,11 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.teleprompter.dev.ui.EditorScreen
-import com.teleprompter.dev.ui.PrompterScreen
-import com.teleprompter.dev.ui.TeleprompterViewModel
-import com.teleprompter.dev.ui.readTxtFileSmart
-import com.teleprompter.dev.ui.theme.DevTheme
+import io.github.yukokusuzuko.teleprompter.ui.EditorScreen
+import io.github.yukokusuzuko.teleprompter.ui.PrompterScreen
+import io.github.yukokusuzuko.teleprompter.ui.TeleprompterViewModel
+import io.github.yukokusuzuko.teleprompter.ui.readTxtFileSmart
+import io.github.yukokusuzuko.teleprompter.ui.theme.TeleprompterTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -68,7 +72,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            DevTheme(darkTheme = true) {
+            TeleprompterTheme(palette = state.settings.themePalette) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
