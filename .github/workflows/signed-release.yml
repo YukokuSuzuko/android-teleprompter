@@ -25,6 +25,9 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+        with:
+          # sdkmanager's obsolete 'tools' package no longer exists.
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Require private signing and model inputs
