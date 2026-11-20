@@ -260,4 +260,67 @@ object TeleprompterIcons {
             }
         }.build()
     }
+
+    val Visibility: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Visibility",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round
+            ) {
+                moveTo(2.2f, 12f)
+                curveTo(3.8f, 7.8f, 7.6f, 5f, 12f, 5f)
+                curveTo(16.4f, 5f, 20.2f, 7.8f, 21.8f, 12f)
+                curveTo(20.2f, 16.2f, 16.4f, 19f, 12f, 19f)
+                curveTo(7.6f, 19f, 3.8f, 16.2f, 2.2f, 12f)
+                close()
+                moveTo(12f, 9.2f)
+                curveTo(13.55f, 9.2f, 14.8f, 10.45f, 14.8f, 12f)
+                curveTo(14.8f, 13.55f, 13.55f, 14.8f, 12f, 14.8f)
+                curveTo(10.45f, 14.8f, 9.2f, 13.55f, 9.2f, 12f)
+                curveTo(9.2f, 10.45f, 10.45f, 9.2f, 12f, 9.2f)
+                close()
+            }
+        }.build()
+    }
+
+    val Lock: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Lock",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round
+            ) {
+                moveTo(7f, 11f)
+                verticalLineTo(7f)
+                curveTo(7f, 4.24f, 9.24f, 2f, 12f, 2f)
+                curveTo(14.76f, 2f, 17f, 4.24f, 17f, 7f)
+                verticalLineTo(11f)
+                moveTo(6f, 11f)
+                horizontalLineTo(18f)
+                curveTo(19.1f, 11f, 20f, 11.9f, 20f, 13f)
+                verticalLineTo(19f)
+                curveTo(20f, 20.1f, 19.1f, 21f, 18f, 21f)
+                horizontalLineTo(6f)
+                curveTo(4.9f, 21f, 4f, 20.1f, 4f, 19f)
+                verticalLineTo(13f)
+                curveTo(4f, 11.9f, 4.9f, 11f, 6f, 11f)
+                close()
+            }
+        }.build()
+    }
 }

@@ -13,6 +13,9 @@ import io.github.yukokusuzuko.teleprompter.data.AppThemePalette
 val PrompterOledBlack = Color(0xFF000000)
 val PrompterReadDimmed = Color(0xFF464850)
 val PrompterUnreadWhite = Color(0xFFF2F2F7)
+val PrompterWhiteThemeReadDimmed = Color(0xFF3A3D45)
+val PrompterWhiteThemeUnreadSilver = Color(0xFF8E929C)
+val PrompterWhiteThemeActiveBg = Color(0x14FFFFFF)
 val PrompterListeningGreen = Color(0xFF4CD964)
 val PrompterDangerRed = Color(0xFFFF897D)
 
@@ -128,9 +131,67 @@ val LavenderDarkColorScheme: ColorScheme = darkColorScheme(
     onError = Color(0xFF690005)
 )
 
+val CoralDarkColorScheme: ColorScheme = darkColorScheme(
+    primary = Color(0xFFFFB59D),
+    onPrimary = Color(0xFF5D1800),
+    primaryContainer = Color(0xFF7B2D12),
+    onPrimaryContainer = Color(0xFFFFDBD0),
+    secondary = Color(0xFFE7BDB0),
+    onSecondary = Color(0xFF442A21),
+    secondaryContainer = Color(0xFF463530),
+    onSecondaryContainer = Color(0xFFF7DCD3),
+    tertiary = Color(0xFFD8C58D),
+    onTertiary = Color(0xFF3B2F05),
+    background = Color(0xFF171211),
+    onBackground = Color(0xFFF5ECEA),
+    surface = Color(0xFF1B1615),
+    onSurface = Color(0xFFF5ECEA),
+    surfaceVariant = Color(0xFF50433F),
+    onSurfaceVariant = Color(0xFFB3A19B),
+    surfaceContainerLowest = Color(0xFF110C0B),
+    surfaceContainerLow = Color(0xFF201A18),
+    surfaceContainer = Color(0xFF27201E),
+    surfaceContainerHigh = Color(0xFF2F2724),
+    surfaceContainerHighest = Color(0xFF3B322E),
+    outline = Color(0xFF6B5B56),
+    outlineVariant = Color(0xFF473B37),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005)
+)
+
+val WhiteDarkColorScheme: ColorScheme = darkColorScheme(
+    primary = Color(0xFFFFFFFF),
+    onPrimary = Color(0xFF121316),
+    primaryContainer = Color(0xFF353840),
+    onPrimaryContainer = Color(0xFFFFFFFF),
+    secondary = Color(0xFFC8CBD2),
+    onSecondary = Color(0xFF24262B),
+    secondaryContainer = Color(0xFF2E3037),
+    onSecondaryContainer = Color(0xFFE8EAEF),
+    tertiary = Color(0xFFB4B8C2),
+    onTertiary = Color(0xFF1F2126),
+    background = Color(0xFF101114),
+    onBackground = Color(0xFFF5F6FA),
+    surface = Color(0xFF141519),
+    onSurface = Color(0xFFF5F6FA),
+    surfaceVariant = Color(0xFF41444D),
+    onSurfaceVariant = Color(0xFF9EA2AC),
+    surfaceContainerLowest = Color(0xFF0A0B0D),
+    surfaceContainerLow = Color(0xFF17191E),
+    surfaceContainer = Color(0xFF1D1F25),
+    surfaceContainerHigh = Color(0xFF24272E),
+    surfaceContainerHighest = Color(0xFF30333C),
+    outline = Color(0xFF5C606B),
+    outlineVariant = Color(0xFF393C45),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005)
+)
+
 fun colorSchemeFor(palette: AppThemePalette): ColorScheme = when (palette) {
     AppThemePalette.AMBER -> AmberDarkColorScheme
     AppThemePalette.BLUE -> BlueDarkColorScheme
     AppThemePalette.TEAL -> TealDarkColorScheme
     AppThemePalette.LAVENDER -> LavenderDarkColorScheme
+    AppThemePalette.CORAL -> CoralDarkColorScheme
+    AppThemePalette.WHITE -> WhiteDarkColorScheme
 }

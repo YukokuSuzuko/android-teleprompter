@@ -5,16 +5,28 @@
 package io.github.yukokusuzuko.teleprompter.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,13 +34,14 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,12 +50,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,12 +71,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +86,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -77,14 +94,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
@@ -102,17 +127,38 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.yukokusuzuko.teleprompter.data.AppThemePalette
 import io.github.yukokusuzuko.teleprompter.data.FollowMode
+import io.github.yukokusuzuko.teleprompter.data.MirrorMode
 import io.github.yukokusuzuko.teleprompter.data.PrompterSettings
 import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterListeningGreen
 import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterOledBlack
 import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterReadDimmed
 import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterUnreadWhite
+import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterWhiteThemeActiveBg
+import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterWhiteThemeReadDimmed
+import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterWhiteThemeUnreadSilver
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private const val GITHUB_REPO_URL = "https://github.com/YukokuSuzuko/android-teleprompter"
+
+private enum class BannerKind {
+    INFO,
+    DRAG_FOLLOWING,
+    TOUCH_LOCKED
+}
+
+private data class PrompterBanner(
+    val id: Long,
+    val text: String,
+    val kind: BannerKind,
+    val durationMs: Long
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrompterScreen(
     script: String,
@@ -122,6 +168,9 @@ fun PrompterScreen(
     liveCharsPerSec: Float,
     isListening: Boolean,
     isUniformPlaying: Boolean,
+    isTouchLocked: Boolean,
+    prompterNoticeId: Long,
+    prompterNoticeText: String,
     modelStatus: String,
     heardTailText: String,
     settings: PrompterSettings,
@@ -132,19 +181,65 @@ fun PrompterScreen(
     onRewindStep: () -> Unit,
     onToggleOrientation: () -> Unit,
     onUpdateSettings: (PrompterSettings) -> Unit,
+    onUnlockTouch: () -> Unit,
+    onPickCustomFont: () -> Unit,
+    onClearCustomFont: () -> Unit,
     onBackToEditor: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val isVoiceMode = settings.followMode != FollowMode.UNIFORM_SCROLL
     val isActivelyFollowing = (isVoiceMode && isListening) || (!isVoiceMode && isUniformPlaying)
     val liveFollowingState by rememberUpdatedState(isActivelyFollowing)
     val latestSettings by rememberUpdatedState(settings)
     val latestOnUpdateSettings by rememberUpdatedState(onUpdateSettings)
+    val latestTouchLocked by rememberUpdatedState(isTouchLocked)
+
+    val scriptFonts = remember(context, settings.customFontFileName) {
+        resolveScriptFonts(context, settings.customFontFileName)
+    }
 
     val view = LocalView.current
     var controlsVisible by remember { mutableStateOf(true) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var manualScrolledWhilePaused by remember { mutableStateOf(false) }
+
+    // Unified non-blocking bottom floating banner state
+    var activeBanner by remember { mutableStateOf<PrompterBanner?>(null) }
+    var isHoldingUnlock by remember { mutableStateOf(false) }
+
+    fun pushBanner(text: String, kind: BannerKind = BannerKind.INFO, durationMs: Long = 1800L) {
+        activeBanner = PrompterBanner(
+            id = System.nanoTime(),
+            text = text,
+            kind = kind,
+            durationMs = durationMs
+        )
+    }
+
+    // Auto-dismiss bottom banner unless user is actively holding the long-press unlock button
+    LaunchedEffect(activeBanner?.id, isHoldingUnlock) {
+        val banner = activeBanner ?: return@LaunchedEffect
+        if (!isHoldingUnlock) {
+            delay(banner.durationMs)
+            if (activeBanner?.id == banner.id && !isHoldingUnlock) {
+                activeBanner = null
+            }
+        }
+    }
+
+    // Forward ViewModel notices (volume± lock/unlock, font import, etc.) to the floating banner
+    LaunchedEffect(prompterNoticeId) {
+        if (prompterNoticeId > 0L && prompterNoticeText.isNotBlank()) {
+            val kind = if (isTouchLocked) BannerKind.TOUCH_LOCKED else BannerKind.INFO
+            val duration = if (isTouchLocked) 2600L else 1700L
+            pushBanner(prompterNoticeText, kind = kind, durationMs = duration)
+            if (isTouchLocked) {
+                showSettingsSheet = false
+            }
+        }
+    }
 
     // Floating font-size feedback badge triggered by A-/A+ or two-finger pinch
     var fontBadgeTrigger by remember { mutableLongStateOf(0L) }
@@ -161,6 +256,14 @@ fun PrompterScreen(
         val clamped = newSizeSp.coerceIn(32f, 80f)
         latestOnUpdateSettings(latestSettings.withActiveFontSize(clamped))
         fontBadgeTrigger = System.nanoTime()
+    }
+
+    fun toggleControlsVisibility() {
+        val next = !controlsVisible
+        controlsVisible = next
+        if (!next) {
+            pushBanner("已隐藏控制栏 · 双击屏幕恢复", kind = BannerKind.INFO, durationMs = 1600L)
+        }
     }
 
     // Keep screen awake + hide system bars for distraction-free direct viewing
@@ -182,7 +285,21 @@ fun PrompterScreen(
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var targetScrollY by remember { mutableFloatStateOf(0f) }
 
-    // Three-tier script styling respecting lineHighlight, boldBodyText, and active MD3 primary color
+    // Notify user when manually dragging while actively following/scrolling
+    LaunchedEffect(scrollState.isScrollInProgress) {
+        if (scrollState.isScrollInProgress && liveFollowingState && !latestTouchLocked) {
+            val hint = if (isVoiceMode) {
+                "正在语音跟读，松手将自动回位 · 点句子跳转，或暂停后拖动"
+            } else {
+                "正在自动滚动，松手将自动回位 · 点句子跳转，或暂停后拖动"
+            }
+            pushBanner(hint, kind = BannerKind.DRAG_FOLLOWING, durationMs = 2800L)
+        }
+    }
+
+    val isWhiteTheme = settings.themePalette == AppThemePalette.WHITE
+
+    // Three-tier script styling with dedicated 3-level monochrome luminance hierarchy for WHITE theme
     val styledScript = remember(
         script,
         currentCharOffset,
@@ -190,6 +307,8 @@ fun PrompterScreen(
         textLayout,
         settings.lineHighlight,
         settings.boldBodyText,
+        settings.themePalette,
+        scriptFonts,
         cs.primary
     ) {
         val safeCursor = currentCharOffset.coerceIn(0, script.length)
@@ -205,20 +324,24 @@ fun PrompterScreen(
         }
 
         val bodyWeight = if (settings.boldBodyText) FontWeight.Bold else FontWeight.Normal
+        val bodyFont = if (settings.boldBodyText) scriptFonts.bold else scriptFonts.regular
+        val readColor = if (isWhiteTheme) PrompterWhiteThemeReadDimmed else PrompterReadDimmed
+        val activeColor = if (isWhiteTheme) Color.White else cs.primary
+        val unreadColor = if (isWhiteTheme) PrompterWhiteThemeUnreadSilver else PrompterUnreadWhite
 
         buildAnnotatedString {
             if (activeStart > 0) {
-                withStyle(SpanStyle(color = PrompterReadDimmed, fontWeight = bodyWeight)) {
+                withStyle(SpanStyle(color = readColor, fontWeight = bodyWeight, fontFamily = bodyFont)) {
                     append(script.substring(0, activeStart))
                 }
             }
             if (activeEnd > activeStart) {
-                withStyle(SpanStyle(color = cs.primary, fontWeight = FontWeight.Bold)) {
+                withStyle(SpanStyle(color = activeColor, fontWeight = FontWeight.Bold, fontFamily = scriptFonts.bold)) {
                     append(script.substring(activeStart, activeEnd))
                 }
             }
             if (activeEnd < script.length) {
-                withStyle(SpanStyle(color = PrompterUnreadWhite, fontWeight = bodyWeight)) {
+                withStyle(SpanStyle(color = unreadColor, fontWeight = bodyWeight, fontFamily = bodyFont)) {
                     append(script.substring(activeEnd))
                 }
             }
@@ -229,9 +352,8 @@ fun PrompterScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(PrompterOledBlack)
-            .displayCutoutPadding()
-            // Two-finger pinch-to-zoom font resize (only consumes when >= 2 fingers pressed,
-            // so 1-finger vertical scroll, tap-to-jump, and double-tap are completely unaffected)
+            .then(if (settings.avoidDisplayCutout) Modifier.displayCutoutPadding() else Modifier)
+            // Two-finger pinch-to-zoom font resize (disabled while touch-locked)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -239,16 +361,17 @@ fun PrompterScreen(
                     var cumulativeZoom = 1f
                     do {
                         val event = awaitPointerEvent()
+                        if (latestTouchLocked) continue
                         val pressedCount = event.changes.count { it.pressed }
                         if (pressedCount >= 2) {
                             val zoomChange = event.calculateZoom()
                             if (abs(zoomChange - 1f) > 0.005f) {
-                                if (pinchBaseFontSp == null) {
-                                    pinchBaseFontSp = latestSettings.activeFontSizeSp
+                                val baseSp = pinchBaseFontSp ?: latestSettings.activeFontSizeSp.also {
+                                    pinchBaseFontSp = it
                                     cumulativeZoom = 1f
                                 }
                                 cumulativeZoom *= zoomChange
-                                val nextSp = (pinchBaseFontSp!! * cumulativeZoom)
+                                val nextSp = (baseSp * cumulativeZoom)
                                     .roundToInt()
                                     .toFloat()
                                     .coerceIn(32f, 80f)
@@ -267,6 +390,7 @@ fun PrompterScreen(
     ) {
         val density = LocalDensity.current
         val viewportHeightDp = maxHeight
+        val viewportHeightPx = with(density) { maxHeight.toPx() }
         val fontSize = settings.activeFontSizeSp.sp
         val horizontalMargin = settings.activeHorizontalMarginDp.dp
 
@@ -360,79 +484,126 @@ fun PrompterScreen(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                .drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush = Brush.verticalGradient(*fadeStops),
-                        blendMode = BlendMode.DstIn
-                    )
-                }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = horizontalMargin)
-            ) {
-                Spacer(modifier = Modifier.height(topClearanceDp))
-                Text(
-                    text = styledScript,
-                    fontSize = fontSize,
-                    lineHeight = fontSize * settings.lineHeightMultiplier,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pointerInput(script) {
-                            detectTapGestures(
-                                onTap = { tapOffset ->
-                                    val layout = textLayout
-                                    if (layout != null && script.isNotEmpty()) {
-                                        manualScrolledWhilePaused = false
-                                        val clickedOffset = layout.getOffsetForPosition(tapOffset)
-                                        onTapCharOffset(clickedOffset)
-                                    }
-                                },
-                                onDoubleTap = {
-                                    controlsVisible = !controlsVisible
-                                }
-                            )
-                        },
-                    onTextLayout = { textLayout = it }
-                )
-                Spacer(modifier = Modifier.height(viewportHeightDp * 0.90f))
-            }
-        }
-
-        // Left-edge focus marker pill smoothly tracking the active visual line
-        val activeLineTopOnScreenPx = remember(
+        // Compute active line geometry for both dynamic left focus bar & WHITE-theme spotlight band
+        val activeLineMetrics = remember(
             textLayout,
             currentCharOffset,
             script,
             scrollState.value,
-            topClearancePx
+            topClearancePx,
+            settings.activeFontSizeSp,
+            settings.lineHeightMultiplier
         ) {
             val layout = textLayout
+            val fontPx = with(density) { fontSize.toPx() }
             if (layout == null || script.isEmpty()) {
-                topClearancePx
+                val estH = fontPx * settings.lineHeightMultiplier
+                Triple(topClearancePx, estH, fontPx)
             } else {
                 val idx = currentCharOffset.coerceIn(0, script.lastIndex)
                 val lineIdx = layout.getLineForOffset(idx)
-                topClearancePx + layout.getLineTop(lineIdx) - scrollState.value.toFloat()
+                val top = topClearancePx + layout.getLineTop(lineIdx) - scrollState.value.toFloat()
+                val height = (layout.getLineBottom(lineIdx) - layout.getLineTop(lineIdx))
+                    .coerceAtLeast(fontPx)
+                Triple(top, height, fontPx)
             }
         }
-        val markerMarginPx = with(density) { 5.dp.toPx() }
-        val markerYOffsetPx = (activeLineTopOnScreenPx + with(density) { 10.dp.toPx() }).roundToInt()
-        if (activeLineTopOnScreenPx >= -40f) {
+
+        // ==================== MIRRORABLE SCRIPT + FOCUS MARKER LAYER ====================
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = if (settings.mirrorMode == MirrorMode.HORIZONTAL) -1f else 1f
+                    scaleY = if (settings.mirrorMode == MirrorMode.VERTICAL) -1f else 1f
+                }
+        ) {
+            val (activeTopPx, activeLineHeightPx, fontPx) = activeLineMetrics
+            val lineVisible = activeTopPx + activeLineHeightPx >= -20f && activeTopPx <= viewportHeightPx + 20f
+
+            // Subtle monochrome spotlight band behind the active line in WHITE theme
+            if (isWhiteTheme && settings.lineHighlight && lineVisible) {
+                val bandHeightDp = with(density) { activeLineHeightPx.toDp() }
+                val bandHorizontalPad = (horizontalMargin - 6.dp).coerceAtLeast(6.dp)
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(0, activeTopPx.roundToInt()) }
+                        .fillMaxWidth()
+                        .padding(horizontal = bandHorizontalPad)
+                        .height(bandHeightDp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(PrompterWhiteThemeActiveBg)
+                )
+            }
+
+            // Scrollable script text with vertical edge fade
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(markerMarginPx.roundToInt(), markerYOffsetPx) }
-                    .height(30.dp)
-                    .width(4.5.dp)
-                    .background(cs.primary, CircleShape)
-            )
+                    .fillMaxSize()
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = Brush.verticalGradient(*fadeStops),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState, enabled = !isTouchLocked)
+                        .padding(horizontal = horizontalMargin)
+                ) {
+                    Spacer(modifier = Modifier.height(topClearanceDp))
+                    Text(
+                        text = styledScript,
+                        fontSize = fontSize,
+                        lineHeight = fontSize * settings.lineHeightMultiplier,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(script) {
+                                detectTapGestures(
+                                    onTap = { tapOffset ->
+                                        if (latestTouchLocked) return@detectTapGestures
+                                        val layout = textLayout
+                                        if (layout != null && script.isNotEmpty()) {
+                                            manualScrolledWhilePaused = false
+                                            val clickedOffset = layout.getOffsetForPosition(tapOffset)
+                                            onTapCharOffset(clickedOffset)
+                                        }
+                                    },
+                                    onDoubleTap = {
+                                        if (!latestTouchLocked) {
+                                            toggleControlsVisibility()
+                                        }
+                                    }
+                                )
+                            },
+                        onTextLayout = { textLayout = it }
+                    )
+                    Spacer(modifier = Modifier.height(viewportHeightDp * 0.90f))
+                }
+            }
+
+            // Dynamic left-edge focus marker scaled & vertically centered to the exact active line
+            if (lineVisible) {
+                val markerHeightPx = (fontPx * 0.72f)
+                    .coerceIn(with(density) { 20.dp.toPx() }, activeLineHeightPx * 0.85f)
+                val markerHeightDp = with(density) { markerHeightPx.toDp() }
+                val markerWidthDp = (3.5f + ((settings.activeFontSizeSp - 32f) / 48f).coerceIn(0f, 1f) * 2.5f).dp
+                val markerMarginPx = with(density) { 5.dp.toPx() }
+                val lineCenterPx = activeTopPx + activeLineHeightPx * 0.5f
+                val markerYOffsetPx = (lineCenterPx - markerHeightPx * 0.5f).roundToInt()
+
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(markerMarginPx.roundToInt(), markerYOffsetPx) }
+                        .height(markerHeightDp)
+                        .width(markerWidthDp)
+                        .background(if (isWhiteTheme) Color.White else cs.primary, CircleShape)
+                )
+            }
         }
 
         // ==================== TOP MD3 TONAL STATUS PILL ====================
@@ -559,7 +730,7 @@ fun PrompterScreen(
                     Row(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .clickable { controlsVisible = false }
+                            .clickable { toggleControlsVisibility() }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -581,27 +752,51 @@ fun PrompterScreen(
             }
         }
 
-        // Restore HUD minimal pill when hidden
+        // ==================== FULLSCREEN 2DP BOTTOM PROGRESS BAR & SUBTLE RESTORE BUTTON ====================
         if (!controlsVisible) {
+            // Ultra-thin 2dp progress indicator hugging the bottom edge
+            if (settings.showFullscreenProgress) {
+                val smoothProgress by animateFloatAsState(
+                    targetValue = progressFraction.coerceIn(0f, 1f),
+                    animationSpec = tween(durationMillis = 200, easing = LinearEasing),
+                    label = "fullscreenProgress"
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(Color.White.copy(alpha = 0.10f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(smoothProgress)
+                            .fillMaxHeight()
+                            .background(cs.primary.copy(alpha = 0.52f))
+                    )
+                }
+            }
+
+            // Tiny low-opacity circular restore icon in bottom-right fade zone (coexists with double-tap)
             Surface(
-                color = cs.surfaceContainerHigh.copy(alpha = 0.65f),
+                onClick = { controlsVisible = true },
+                color = cs.surfaceContainerHigh.copy(alpha = 0.36f),
                 shape = CircleShape,
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(12.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { controlsVisible = true }
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 14.dp, bottom = 14.dp)
+                    .size(36.dp)
             ) {
-                Text(
-                    text = "显示控制",
-                    color = cs.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = TeleprompterIcons.Visibility,
+                        contentDescription = "显示控制栏",
+                        tint = cs.onSurface.copy(alpha = 0.60f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
@@ -667,7 +862,7 @@ fun PrompterScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -782,15 +977,125 @@ fun PrompterScreen(
                 }
             }
         }
+
+        // ==================== FULL-SCREEN TOUCH LOCK SHIELD ====================
+        // Absorbs all accidental screen touches while locked; placed below the floating unlock banner
+        if (isTouchLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            pushBanner(
+                                text = "已锁定屏幕 · 同时按音量±解锁",
+                                kind = BannerKind.TOUCH_LOCKED,
+                                durationMs = 2600L
+                            )
+                            do {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }
+            )
+        }
+
+        // ==================== UNIFIED BOTTOM FLOATING BANNER (TOAST / DRAG HINT / LOCK) ====================
+        val bannerBottomPad = if (controlsVisible) 74.dp else 24.dp
+        AnimatedVisibility(
+            visible = activeBanner != null,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(200)) { it / 2 },
+            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 3 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = bannerBottomPad)
+        ) {
+            val banner = activeBanner
+            if (banner != null) {
+                Surface(
+                    color = cs.surfaceContainerHighest.copy(alpha = 0.94f),
+                    contentColor = cs.onSurface,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, cs.primary.copy(alpha = 0.28f)),
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(
+                            start = 14.dp,
+                            end = if (banner.kind == BannerKind.INFO) 14.dp else 8.dp,
+                            top = 7.dp,
+                            bottom = 7.dp
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (banner.kind == BannerKind.TOUCH_LOCKED) {
+                            Icon(
+                                imageVector = TeleprompterIcons.Lock,
+                                contentDescription = null,
+                                tint = cs.primary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        Text(
+                            text = banner.text,
+                            fontSize = 12.sp,
+                            color = cs.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        when (banner.kind) {
+                            BannerKind.DRAG_FOLLOWING -> {
+                                Surface(
+                                    onClick = {
+                                        onToggleFollowOrPlay()
+                                        activeBanner = null
+                                    },
+                                    color = cs.primary,
+                                    contentColor = cs.onPrimary,
+                                    shape = CircleShape
+                                ) {
+                                    Text(
+                                        text = "暂停",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                            BannerKind.TOUCH_LOCKED -> {
+                                LongPressUnlockPill(
+                                    onHoldStateChange = { holding -> isHoldingUnlock = holding },
+                                    onUnlocked = {
+                                        isHoldingUnlock = false
+                                        onUnlockTouch()
+                                    }
+                                )
+                            }
+                            BannerKind.INFO -> Unit
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // ==================== MD3 MODAL BOTTOM SHEET (28dp TOP RADIUS + GROUPED CARDS) ====================
+    // ==================== MD3 MODAL BOTTOM SHEET (HALF-SCREEN LIVE PREVIEW + EXPAND TOGGLE) ====================
     if (showSettingsSheet) {
         val modeLabel = if (settings.isLandscape) "横屏" else "竖屏"
         val marginRange = if (settings.isLandscape) 16f..220f else 8f..96f
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        val isExpanded = sheetState.currentValue == SheetValue.Expanded ||
+            sheetState.targetValue == SheetValue.Expanded
 
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },
+            sheetState = sheetState,
+            scrimColor = Color.Black.copy(alpha = 0.25f),
             containerColor = cs.surfaceContainerLow,
             contentColor = cs.onSurface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -806,7 +1111,7 @@ fun PrompterScreen(
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Sheet Title Row
+                // Sheet Title Row with explicit Expand/Collapse + Done pills
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -814,7 +1119,7 @@ fun PrompterScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "提词与排版设置",
                             fontSize = 18.sp,
@@ -822,29 +1127,75 @@ fun PrompterScreen(
                             color = cs.onSurface
                         )
                         Text(
-                            text = "当前为「${modeLabel}」独立记忆参数",
+                            text = "横屏竖屏独立设置，互不干扰",
                             fontSize = 12.sp,
                             color = cs.onSurfaceVariant
                         )
                     }
-                    Surface(
-                        onClick = { showSettingsSheet = false },
-                        color = cs.primaryContainer,
-                        contentColor = cs.onPrimaryContainer,
-                        shape = CircleShape
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "完成",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (isExpanded) sheetState.partialExpand() else sheetState.expand()
+                                }
+                            },
+                            color = cs.secondaryContainer,
+                            contentColor = cs.onSecondaryContainer,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = if (isExpanded) "收起" else "展开",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                        Surface(
+                            onClick = { showSettingsSheet = false },
+                            color = cs.primaryContainer,
+                            contentColor = cs.onPrimaryContainer,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = "完成",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
 
                 // ---------- Group 1: Typography & Layout ----------
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SettingsGroupLabel("字体与排版")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SettingsGroupLabel("字体与排版")
+                        Text(
+                            text = "恢复默认",
+                            color = cs.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = FastWaveIndication
+                                ) {
+                                    onUpdateSettings(settings.resetActiveTypographyDefaults())
+                                    pushBanner("已恢复${modeLabel}默认排版", durationMs = 1600L)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
 
                     // 1A. Font Size Slider
                     SettingsCard(shape = topCardShape) {
@@ -853,7 +1204,7 @@ fun PrompterScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("${modeLabel}字号（支持双指捏合）", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("${modeLabel}字号", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Surface(color = cs.primaryContainer, shape = CircleShape) {
                                 Text(
                                     text = "${settings.activeFontSizeSp.toInt()} sp",
@@ -864,69 +1215,21 @@ fun PrompterScreen(
                                 )
                             }
                         }
-                        Slider(
+                        TeleprompterSlider(
                             value = settings.activeFontSizeSp,
                             onValueChange = { onUpdateSettings(settings.withActiveFontSize(it)) },
-                            valueRange = 32f..80f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = cs.primary,
-                                activeTrackColor = cs.primary,
-                                inactiveTrackColor = cs.surfaceVariant
-                            )
+                            valueRange = 32f..80f
                         )
                     }
 
-                    // 1B. Line Height Multiplier (4-segment pill)
-                    val lineHeightOptions = listOf(1.2f to "1.2x", 1.4f to "1.4x", 1.6f to "1.6x", 1.8f to "1.8x")
-                    val lhDesc = when {
-                        settings.lineHeightMultiplier <= 1.25f -> "1.2x 紧凑"
-                        settings.lineHeightMultiplier <= 1.45f -> "1.4x 标准"
-                        settings.lineHeightMultiplier <= 1.65f -> "1.6x 宽松"
-                        else -> "1.8x 特宽"
-                    }
+                    // 1B. Horizontal Margin Slider (placed directly below Font Size for live half-screen preview)
                     SettingsCard(shape = middleCardShape) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("行距倍数（防看串行）", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(lhDesc, color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SegmentedPillRow(
-                            options = lineHeightOptions,
-                            selectedPredicate = { abs(it.first - settings.lineHeightMultiplier) < 0.05f },
-                            label = { it.second },
-                            onSelect = { onUpdateSettings(settings.copy(lineHeightMultiplier = it.first)) }
-                        )
-                    }
-
-                    // 1C. Body Font Weight (2-segment pill)
-                    SettingsCard(shape = middleCardShape) {
-                        Text("正文字重", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            text = "远机位 / 强灯光拍摄推荐开启「加粗」",
-                            color = cs.onSurfaceVariant,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SegmentedPillRow(
-                            options = listOf(false to "常规体", true to "加粗（清晰）"),
-                            selectedPredicate = { it.first == settings.boldBodyText },
-                            label = { it.second },
-                            onSelect = { onUpdateSettings(settings.copy(boldBodyText = it.first)) }
-                        )
-                    }
-
-                    // 1D. Horizontal Margin Slider
-                    SettingsCard(shape = middleCardShape) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("${modeLabel}左右安全边距（防眼神飘）", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("${modeLabel}边距", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 text = "${settings.activeHorizontalMarginDp.toInt()} dp",
                                 color = cs.primary,
@@ -934,68 +1237,208 @@ fun PrompterScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Slider(
+                        TeleprompterSlider(
                             value = settings.activeHorizontalMarginDp.coerceIn(marginRange.start, marginRange.endInclusive),
                             onValueChange = { onUpdateSettings(settings.withActiveMargin(it)) },
-                            valueRange = marginRange,
-                            colors = SliderDefaults.colors(
-                                thumbColor = cs.primary,
-                                activeTrackColor = cs.primary,
-                                inactiveTrackColor = cs.surfaceVariant
-                            )
+                            valueRange = marginRange
                         )
                     }
 
-                    // 1E. Lines Above Segmented Pill
-                    SettingsCard(shape = bottomCardShape) {
-                        Text("上方保留已读行数", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    // 1C. Line Height Multiplier (spring sliding pill)
+                    val lineHeightOptions = listOf(1.2f to "1.2x", 1.4f to "1.4x", 1.6f to "1.6x", 1.8f to "1.8x")
+                    val lhDesc = when {
+                        settings.lineHeightMultiplier <= 1.25f -> "紧凑"
+                        settings.lineHeightMultiplier <= 1.45f -> "标准"
+                        settings.lineHeightMultiplier <= 1.65f -> "宽松"
+                        else -> "特宽"
+                    }
+                    SettingsCard(shape = middleCardShape) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("行距", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(lhDesc, color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                         SegmentedPillRow(
-                            options = listOf(0 to "0 行", 1 to "1 行", 2 to "2 行"),
-                            selectedPredicate = { it.first == settings.linesAbove },
+                            options = lineHeightOptions,
+                            selectedIndex = lineHeightOptions.indexOfFirst {
+                                abs(it.first - settings.lineHeightMultiplier) < 0.05f
+                            }.coerceAtLeast(0),
+                            label = { it.second },
+                            onSelect = { onUpdateSettings(settings.copy(lineHeightMultiplier = it.first)) }
+                        )
+                    }
+
+                    // 1D. Font Weight (spring sliding pill)
+                    val weightOptions = listOf(false to "常规", true to "加粗")
+                    SettingsCard(shape = middleCardShape) {
+                        Text("字体粗细", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SegmentedPillRow(
+                            options = weightOptions,
+                            selectedIndex = if (settings.boldBodyText) 1 else 0,
+                            label = { it.second },
+                            onSelect = { onUpdateSettings(settings.copy(boldBodyText = it.first)) }
+                        )
+                    }
+
+                    // 1E. Local Font Import (.ttf / .otf)
+                    SettingsCard(shape = middleCardShape) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                                Text("字体", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = settings.customFontDisplayName.ifBlank { "系统默认无衬线体" },
+                                    color = cs.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (!settings.customFontFileName.isNullOrBlank()) {
+                                    Surface(
+                                        onClick = onClearCustomFont,
+                                        color = cs.surfaceContainerLow,
+                                        contentColor = cs.onSurfaceVariant,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, cs.outlineVariant)
+                                    ) {
+                                        Text(
+                                            text = "恢复系统",
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    onClick = onPickCustomFont,
+                                    color = cs.secondaryContainer,
+                                    contentColor = cs.onSecondaryContainer,
+                                    shape = CircleShape
+                                ) {
+                                    Text(
+                                        text = "导入字体",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 1F. Mirror Mode (for beam-splitter rigs, spring sliding pill)
+                    val mirrorOptions = MirrorMode.entries
+                    SettingsCard(shape = middleCardShape) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("镜像显示", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "分光镜 / 反光镜拍摄",
+                                color = cs.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SegmentedPillRow(
+                            options = mirrorOptions,
+                            selectedIndex = mirrorOptions.indexOf(settings.mirrorMode).coerceAtLeast(0),
+                            label = { it.displayName },
+                            onSelect = { onUpdateSettings(settings.copy(mirrorMode = it)) }
+                        )
+                    }
+
+                    // 1G. Lines Above (spring sliding pill)
+                    val linesOptions = listOf(0 to "0 行", 1 to "1 行", 2 to "2 行")
+                    SettingsCard(shape = bottomCardShape) {
+                        Text("保留已读", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SegmentedPillRow(
+                            options = linesOptions,
+                            selectedIndex = settings.linesAbove.coerceIn(0, 2),
                             label = { it.second },
                             onSelect = { onUpdateSettings(settings.copy(linesAbove = it.first)) }
                         )
                     }
                 }
 
-                // ---------- Group 2: MD3 Theme Palette ----------
+                // ---------- Group 2: 6 Equal-Sized MD3 Themes (Strict 3x2 Grid) ----------
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SettingsGroupLabel("MD3 主题强调色（台词区恒为 OLED 纯黑）")
+                    SettingsGroupLabel("主题配色")
                     SettingsCard(shape = singleCardShape) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            AppThemePalette.entries.forEach { palette ->
-                                val selected = settings.themePalette == palette
-                                Surface(
-                                    onClick = { onUpdateSettings(settings.copy(themePalette = palette)) },
-                                    color = if (selected) cs.primaryContainer else cs.surfaceContainerLow,
-                                    shape = CircleShape,
-                                    border = BorderStroke(
-                                        width = if (selected) 1.5.dp else 1.dp,
-                                        color = if (selected) cs.primary else cs.outlineVariant
-                                    )
+                        val rows = AppThemePalette.entries.chunked(3)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rows.forEach { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
+                                    rowItems.forEach { palette ->
+                                        val selected = settings.themePalette == palette
+                                        val bgColor by animateColorAsState(
+                                            targetValue = if (selected) cs.primaryContainer else cs.surfaceContainerLow,
+                                            animationSpec = tween(160),
+                                            label = "themeChipBg"
+                                        )
+                                        val borderColor by animateColorAsState(
+                                            targetValue = if (selected) cs.primary else cs.outlineVariant,
+                                            animationSpec = tween(160),
+                                            label = "themeChipBorder"
+                                        )
                                         Box(
                                             modifier = Modifier
-                                                .size(12.dp)
+                                                .weight(1f)
+                                                .height(40.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(palette.swatchHex))
-                                        )
-                                        Text(
-                                            text = palette.displayName,
-                                            fontSize = 12.sp,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (selected) cs.onPrimaryContainer else cs.onSurface
-                                        )
+                                                .background(bgColor)
+                                                .border(
+                                                    width = if (selected) 1.5.dp else 1.dp,
+                                                    color = borderColor,
+                                                    shape = CircleShape
+                                                )
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = FastWaveIndication
+                                                ) {
+                                                    onUpdateSettings(settings.copy(themePalette = palette))
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(11.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(palette.swatchHex))
+                                                        .border(
+                                                            0.7.dp,
+                                                            Color.Black.copy(alpha = 0.25f),
+                                                            CircleShape
+                                                        )
+                                                )
+                                                Text(
+                                                    text = palette.displayName,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (selected) cs.onPrimaryContainer else cs.onSurface,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1013,11 +1456,15 @@ fun PrompterScreen(
                             modes.lastIndex -> if (!isVoiceMode) middleCardShape else bottomCardShape
                             else -> middleCardShape
                         }
-                        Surface(
-                            onClick = { onSelectMode(mode) },
-                            color = cs.surfaceContainerHigh,
-                            shape = shape,
-                            modifier = Modifier.fillMaxWidth()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(shape)
+                                .background(cs.surfaceContainerHigh)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = FastWaveIndication
+                                ) { onSelectMode(mode) }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1055,27 +1502,22 @@ fun PrompterScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
-                            Slider(
+                            TeleprompterSlider(
                                 value = settings.fallbackCharsPerSec,
                                 onValueChange = { onUpdateSettings(settings.copy(fallbackCharsPerSec = it)) },
-                                valueRange = 2.0f..8.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = cs.primary,
-                                    activeTrackColor = cs.primary,
-                                    inactiveTrackColor = cs.surfaceVariant
-                                )
+                                valueRange = 2.0f..8.0f
                             )
                         }
                     }
                 }
 
-                // ---------- Group 4: Smart Switches ----------
+                // ---------- Group 4: Display, Hardware & Tolerance Switches ----------
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SettingsGroupLabel("辅助与容错开关")
+                    SettingsGroupLabel("显示与辅助开关")
 
                     SettingsSwitchCard(
                         title = "整行高亮（推荐）",
-                        subtitle = "高亮当前整行，避免识别延迟导致黄字慢半拍",
+                        subtitle = "高亮当前整行，避免识别延迟导致高亮慢半拍",
                         checked = settings.lineHighlight,
                         shape = topCardShape,
                         onCheckedChange = { onUpdateSettings(settings.copy(lineHighlight = it)) }
@@ -1101,28 +1543,69 @@ fun PrompterScreen(
                         title = "NG 重念自动回退",
                         subtitle = "念错倒回去重读前一句时自动跟回",
                         checked = settings.allowRollback,
-                        shape = bottomCardShape,
+                        shape = middleCardShape,
                         onCheckedChange = { onUpdateSettings(settings.copy(allowRollback = it)) }
+                    )
+
+                    SettingsSwitchCard(
+                        title = "全屏显示极细进度条",
+                        subtitle = "隐藏控制栏时在屏幕底边显示 2dp 进度线",
+                        checked = settings.showFullscreenProgress,
+                        shape = middleCardShape,
+                        onCheckedChange = { onUpdateSettings(settings.copy(showFullscreenProgress = it)) }
+                    )
+
+                    SettingsSwitchCard(
+                        title = "避让挖孔 / 刘海屏",
+                        subtitle = "无挖孔全面屏可关闭，实现 100% 满屏显示",
+                        checked = settings.avoidDisplayCutout,
+                        shape = middleCardShape,
+                        onCheckedChange = { onUpdateSettings(settings.copy(avoidDisplayCutout = it)) }
+                    )
+
+                    SettingsSwitchCard(
+                        title = "锁定横屏方向",
+                        subtitle = "放支架/反光镜平放时不随重力意外翻转 180°",
+                        checked = settings.lockLandscapeOrientation,
+                        shape = bottomCardShape,
+                        onCheckedChange = { onUpdateSettings(settings.copy(lockLandscapeOrientation = it)) }
                     )
                 }
 
-                // Shortcut tips + subtle footer attribution
+                // Shortcut tips + clickable GitHub footer
                 Text(
-                    text = "提示：双指捏合可直接缩放字号；点击任意文字跳转，双击文本隐藏控制栏；音量+ 暂停/继续，音量- 回退一句。",
+                    text = "提示：双指捏合缩放字号；点文字跳转，双击隐藏控制栏；音量+ 暂停/继续，音量- 回退一句，同时按音量± 锁定/解锁防误触。",
                     color = cs.onSurfaceVariant,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
 
-                Text(
-                    text = "提词器 v1.1 · by YukokuSuzuko",
-                    color = cs.onSurfaceVariant.copy(alpha = 0.65f),
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 14.dp)
-                )
+                        .padding(top = 2.dp, bottom = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "提词器 v1.2 · by YukokuSuzuko · GitHub ↗",
+                        color = cs.onSurfaceVariant.copy(alpha = 0.78f),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = FastWaveIndication
+                            ) {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_REPO_URL))
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }
@@ -1133,6 +1616,208 @@ private val middleCardShape = RoundedCornerShape(6.dp)
 private val bottomCardShape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
 private val singleCardShape = RoundedCornerShape(20.dp)
 
+/**
+ * Snappy ~150ms expanding radial light-wave ripple for Settings cards & buttons.
+ */
+private object FastWaveIndication : IndicationNodeFactory {
+    override fun create(interactionSource: InteractionSource): DelegatableNode =
+        FastWaveIndicationNode(interactionSource)
+
+    override fun equals(other: Any?): Boolean = other === this
+    override fun hashCode(): Int = System.identityHashCode(this)
+}
+
+private class FastWaveIndicationNode(
+    private val interactionSource: InteractionSource
+) : Modifier.Node(), DrawModifierNode {
+
+    private var pressOrigin = Offset.Unspecified
+    private val radiusFraction = Animatable(0f)
+    private val waveAlpha = Animatable(0f)
+
+    override fun onAttach() {
+        coroutineScope.launch {
+            interactionSource.interactions.collect { interaction ->
+                when (interaction) {
+                    is PressInteraction.Press -> {
+                        pressOrigin = interaction.pressPosition
+                        launch {
+                            radiusFraction.snapTo(0f)
+                            radiusFraction.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 145, easing = FastOutSlowInEasing)
+                            )
+                        }
+                        launch {
+                            waveAlpha.snapTo(0.18f)
+                        }
+                        invalidateDraw()
+                    }
+                    is PressInteraction.Release,
+                    is PressInteraction.Cancel -> {
+                        launch {
+                            waveAlpha.animateTo(
+                                targetValue = 0f,
+                                animationSpec = tween(durationMillis = 155, easing = FastOutSlowInEasing)
+                            )
+                        }
+                        invalidateDraw()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun ContentDrawScope.draw() {
+        drawContent()
+        val alpha = waveAlpha.value
+        if (alpha > 0.002f) {
+            val origin = if (pressOrigin == Offset.Unspecified) center else pressOrigin
+            val maxRadius = hypot(size.width.toDouble(), size.height.toDouble()).toFloat() * 0.95f
+            val r = (maxRadius * radiusFraction.value).coerceAtLeast(12f)
+            drawCircle(
+                color = Color.White.copy(alpha = alpha),
+                radius = r,
+                center = origin
+            )
+        }
+    }
+}
+
+/**
+ * Safety-net hold-to-unlock pill (0.8s press) inside the locked floating banner.
+ * Accidental brushes/taps immediately reset without unlocking.
+ */
+@Composable
+private fun LongPressUnlockPill(
+    onHoldStateChange: (Boolean) -> Unit,
+    onUnlocked: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    val holdProgress = remember { Animatable(0f) }
+
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(cs.secondaryContainer)
+            .border(1.dp, cs.primary.copy(alpha = 0.4f), CircleShape)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onHoldStateChange(true)
+                    var unlocked = false
+                    val animJob = scope.launch {
+                        holdProgress.snapTo(0f)
+                        holdProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(durationMillis = 800, easing = LinearEasing)
+                        )
+                        unlocked = true
+                        onUnlocked()
+                    }
+                    waitForUpOrCancellation()
+                    animJob.cancel()
+                    if (!unlocked) {
+                        scope.launch {
+                            holdProgress.animateTo(0f, tween(120))
+                        }
+                    }
+                    onHoldStateChange(false)
+                }
+            }
+            .height(28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Live horizontal progress fill while holding
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .drawWithContent {
+                    val p = holdProgress.value
+                    if (p > 0f) {
+                        drawRect(
+                            color = cs.primary,
+                            size = Size(size.width * p, size.height)
+                        )
+                    }
+                    drawContent()
+                }
+        )
+        Text(
+            text = "长按解锁",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (holdProgress.value > 0.55f) cs.onPrimary else cs.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 11.dp)
+        )
+    }
+}
+
+/**
+ * Sleek custom Material 3 Slider with compact 4dp x 22dp pill thumb and 8dp rounded track.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TeleprompterSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>
+) {
+    val cs = MaterialTheme.colorScheme
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = valueRange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(34.dp),
+        thumb = {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(22.dp)
+                    .clip(CircleShape)
+                    .background(cs.primary)
+            )
+        },
+        track = { sliderState ->
+            val span = (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                .coerceAtLeast(0.0001f)
+            val fraction = ((sliderState.value - sliderState.valueRange.start) / span)
+                .coerceIn(0f, 1f)
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+            ) {
+                val radius = CornerRadius(size.height / 2f, size.height / 2f)
+                val gap = 4.dp.toPx()
+                val activeW = (size.width * fraction - gap).coerceAtLeast(0f)
+                val inactiveStart = (size.width * fraction + gap).coerceAtMost(size.width)
+                val inactiveW = (size.width - inactiveStart).coerceAtLeast(0f)
+
+                if (activeW > 0f) {
+                    drawRoundRect(
+                        color = cs.primary,
+                        topLeft = Offset.Zero,
+                        size = Size(activeW, size.height),
+                        cornerRadius = radius
+                    )
+                }
+                if (inactiveW > 0f) {
+                    drawRoundRect(
+                        color = cs.surfaceVariant,
+                        topLeft = Offset(inactiveStart, 0f),
+                        size = Size(inactiveW, size.height),
+                        cornerRadius = radius
+                    )
+                }
+            }
+        }
+    )
+}
+
 @Composable
 private fun ToolbarIconAction(
     icon: ImageVector,
@@ -1142,9 +1827,11 @@ private fun ToolbarIconAction(
 ) {
     Column(
         modifier = Modifier
+            .widthIn(min = 48.dp)
+            .heightIn(min = 44.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -1195,53 +1882,92 @@ private fun SettingsCard(
     }
 }
 
+/**
+ * Spring-animated sliding pill segmented control.
+ */
 @Composable
 private fun <T> SegmentedPillRow(
     options: List<T>,
-    selectedPredicate: (T) -> Boolean,
+    selectedIndex: Int,
     label: (T) -> String,
     onSelect: (T) -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
-    Row(
+    val safeIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
+    val gap = 4.dp
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .clip(CircleShape)
             .background(cs.surfaceContainerLow)
             .border(1.dp, cs.outlineVariant.copy(alpha = 0.5f), CircleShape)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(4.dp)
     ) {
-        options.forEach { item ->
-            val selected = selectedPredicate(item)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(CircleShape)
-                    .background(if (selected) cs.primary else Color.Transparent)
-                    .clickable { onSelect(item) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+        val count = options.size.coerceAtLeast(1)
+        val segmentWidth = (maxWidth - gap * (count - 1)) / count
+        val indicatorOffsetX by animateDpAsState(
+            targetValue = (segmentWidth + gap) * safeIndex,
+            animationSpec = spring(
+                dampingRatio = 0.78f,
+                stiffness = Spring.StiffnessMedium
+            ),
+            label = "segmentedPillSlide"
+        )
+
+        // Sliding active pill background
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffsetX)
+                .width(segmentWidth)
+                .height(34.dp)
+                .clip(CircleShape)
+                .background(cs.primary)
+        )
+
+        // Foreground labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(gap)
+        ) {
+            options.forEachIndexed { index, item ->
+                val selected = index == safeIndex
+                val textColor by animateColorAsState(
+                    targetValue = if (selected) cs.onPrimary else cs.onSurfaceVariant,
+                    animationSpec = tween(160),
+                    label = "segmentedTextColor"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onSelect(item) },
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (selected && options.size <= 2) {
-                        Icon(
-                            imageVector = TeleprompterIcons.Check,
-                            contentDescription = null,
-                            tint = cs.onPrimary,
-                            modifier = Modifier.size(14.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (selected && options.size <= 2) {
+                            Icon(
+                                imageVector = TeleprompterIcons.Check,
+                                contentDescription = null,
+                                tint = textColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                        Text(
+                            text = label(item),
+                            color = textColor,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
                         )
                     }
-                    Text(
-                        text = label(item),
-                        color = if (selected) cs.onPrimary else cs.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        maxLines = 1
-                    )
                 }
             }
         }
@@ -1257,12 +1983,15 @@ private fun SettingsSwitchCard(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
-    Surface(
-        color = cs.surfaceContainerHigh,
-        shape = shape,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clip(shape)
+            .background(cs.surfaceContainerHigh)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = FastWaveIndication
+            ) { onCheckedChange(!checked) }
     ) {
         Row(
             modifier = Modifier

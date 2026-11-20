@@ -34,6 +34,9 @@ data class TeleprompterUiState(
     val liveCharsPerSec: Float = 0f,
     val isListening: Boolean = false,
     val isUniformPlaying: Boolean = false,
+    val isTouchLocked: Boolean = false,
+    val prompterNoticeId: Long = 0L,
+    val prompterNoticeText: String = "",
     val isModelReady: Boolean = false,
     val modelStatus: String = "离线语音模型加载中…",
     val heardTailText: String = "",
@@ -154,6 +157,60 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
         updateSettings(current.copy(isLandscape = !current.isLandscape))
     }
 
+    fun toggleTouchLock() {
+        val nextLocked = !_uiState.value.isTouchLocked
+        val notice = if (nextLocked) {
+            "已锁定屏幕 · 同时按音量±解锁"
+        } else {
+            "已解锁屏幕"
+        }
+        _uiState.update {
+            it.copy(
+                isTouchLocked = nextLocked,
+                prompterNoticeId = System.nanoTime(),
+                prompterNoticeText = notice
+            )
+        }
+    }
+
+    fun setTouchLocked(locked: Boolean) {
+        if (_uiState.value.isTouchLocked == locked) return
+        _uiState.update {
+            it.copy(
+                isTouchLocked = locked,
+                prompterNoticeId = System.nanoTime(),
+                prompterNoticeText = if (locked) "已锁定屏幕 · 同时按音量±解锁" else "已解锁屏幕"
+            )
+        }
+    }
+
+    fun showPrompterNotice(message: String) {
+        _uiState.update {
+            it.copy(
+                prompterNoticeId = System.nanoTime(),
+                prompterNoticeText = message
+            )
+        }
+    }
+
+    fun applyCustomFont(fileName: String, displayName: String) {
+        val updated = _uiState.value.settings.copy(
+            customFontFileName = fileName,
+            customFontDisplayName = displayName
+        )
+        updateSettings(updated)
+        showPrompterNotice("已应用字体：$displayName")
+    }
+
+    fun resetCustomFont() {
+        val updated = _uiState.value.settings.copy(
+            customFontFileName = null,
+            customFontDisplayName = ""
+        )
+        updateSettings(updated)
+        showPrompterNotice("已恢复系统默认字体")
+    }
+
     fun enterPrompter(hasMicPermission: Boolean) {
         val state = _uiState.value
         val formatted = ChineseScriptTracker.formatForPlayback(
@@ -186,6 +243,7 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
                 liveCharsPerSec = 0f,
                 isListening = useVoice,
                 isUniformPlaying = !useVoice,
+                isTouchLocked = false,
                 heardTailText = "",
                 modelStatus = if (!hasMicPermission) "未授权麦克风，已切至匀速模式" else it.modelStatus
             )
@@ -206,6 +264,7 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
                 isPrompterActive = false,
                 isListening = false,
                 isUniformPlaying = false,
+                isTouchLocked = false,
                 liveCharsPerSec = 0f
             )
         }

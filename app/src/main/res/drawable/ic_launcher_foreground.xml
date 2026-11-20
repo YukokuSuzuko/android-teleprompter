@@ -5,44 +5,38 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Scheme C: Camera Viewfinder Corner Brackets (inside 66dp safe zone: 24..84) -->
+    <!-- MD3-C Layered Geometry Teleprompter Icon (safely inside 66dp safe zone) -->
+    <!-- Back script card (#FFE082, x=22..72, y=24..70, r=14) -->
     <path
-        android:pathData="M24,37 L24,28 Q24,24 28,24 L37,24"
-        android:strokeColor="#8D91A0"
-        android:strokeWidth="4.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M71,24 L80,24 Q84,24 84,28 L84,37"
-        android:strokeColor="#8D91A0"
-        android:strokeWidth="4.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M24,71 L24,80 Q24,84 28,84 L37,84"
-        android:strokeColor="#8D91A0"
-        android:strokeWidth="4.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M71,84 L80,84 Q84,84 84,80 L84,71"
-        android:strokeColor="#8D91A0"
-        android:strokeWidth="4.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:fillColor="#FFE082"
+        android:pathData="M36,24 L58,24 A14,14 0 0,1 72,38 L72,56 A14,14 0 0,1 58,70 L36,70 A14,14 0 0,1 22,56 L22,38 A14,14 0 0,1 36,24 Z" />
 
-    <!-- Top already-read dimmed line -->
+    <!-- Top dimmed script line -->
     <path
-        android:fillColor="#636775"
-        android:pathData="M38,38 L70,38 A3,3 0 0,1 70,44 L38,44 A3,3 0 0,1 38,38 Z" />
+        android:fillColor="#4A3800"
+        android:fillAlpha="0.55"
+        android:pathData="M33,34 L57,34 A3,3 0 0,1 57,40 L33,40 A3,3 0 0,1 33,34 Z" />
 
-    <!-- Center highlighted active cue line (Amber Gold) -->
+    <!-- Middle highlighted active line -->
     <path
-        android:fillColor="#FFE066"
-        android:pathData="M35.25,50 L72.75,50 A4.25,4.25 0 0,1 72.75,58.5 L35.25,58.5 A4.25,4.25 0 0,1 35.25,50 Z" />
+        android:fillColor="#4A3800"
+        android:pathData="M33.25,44.5 L60.75,44.5 A3.25,3.25 0 0,1 60.75,51 L33.25,51 A3.25,3.25 0 0,1 33.25,44.5 Z" />
 
-    <!-- Bottom upcoming white line -->
+    <!-- Bottom short line -->
     <path
-        android:fillColor="#F4F5F8"
-        android:pathData="M41,64.5 L67,64.5 A3,3 0 0,1 67,70.5 L41,70.5 A3,3 0 0,1 41,64.5 Z" />
+        android:fillColor="#4A3800"
+        android:fillAlpha="0.45"
+        android:pathData="M33,55 L46,55 A3,3 0 0,1 46,61 L33,61 A3,3 0 0,1 33,55 Z" />
+
+    <!-- Front overlapping voice-play circle with tonal cutout ring -->
+    <path
+        android:fillColor="#F5C438"
+        android:strokeColor="#FFF2C6"
+        android:strokeWidth="3.5"
+        android:pathData="M66.5,46 A18.5,18.5 0 1,0 66.5,83 A18.5,18.5 0 1,0 66.5,46 Z" />
+
+    <!-- Crisp play glyph -->
+    <path
+        android:fillColor="#4A3800"
+        android:pathData="M62.5,57.5 L74,64.5 L62.5,71.5 Z" />
 </vector>
