@@ -46,7 +46,7 @@
 ## 自动测试、签名与发布
 
 - [Android CI](.github/workflows/android-ci.yml)：每次 PR、main 推送或手动运行时，校验并下载固定版本的 sherpa-onnx AAR，执行 `testDebugUnitTest` 和 `compileDebugKotlin`。**这不是包含语音模型的可安装 APK**；CI 不会上传或发布缺少模型的假安装包。
-- [Build signed release APK](.github/workflows/signed-release.yml)：在 GitHub Actions 页面**手动触发**，下载并校验完整中文语音模型，使用**你自己的正式发布密钥**进行签名、测试和打包，验证签名与 APK 内模型文件后，生成仅保留 7 天的 Actions 构建产物。此流程**不会自动覆盖现有 v1.2 Release 或发布到商店**。
+- [Build signed release APK](.github/workflows/signed-release.yml)：在 GitHub Actions 页面**手动触发**，下载并校验完整中文语音模型，使用**你自己的正式发布密钥**进行签名、测试和打包，验证签名与 APK 内模型文件。**默认不上传 APK**，仅执行构建与验证；如需自己试装，请在可信电脑本地打包。只有手动勾选 `upload_public_apk` 才会上传含语音模型的签名 APK。仓库公开，登录 GitHub 且能读取仓库的人可以下载该产物；7 天只是保留期限，不是访问限制。此流程**不会自动覆盖现有 v1.2 Release 或发布到商店**。
 - 正式发布前，必须妥善保存独立的正式签名密钥及密码。此前的 v1.2 APK 使用 debug 签名；**首次改成正式密钥签名的 APK 通常不能覆盖安装原有 debug 签名 APK**，用户可能需要卸载旧版（会损失未备份的本地台词和设置）。请先做好数据迁移/备份方案，并在首个正式版开始长期复用同一签名密钥。
 
 ### 配置手动签名构建

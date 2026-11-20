@@ -2,6 +2,12 @@ name: Build signed release APK
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_public_apk:
+        description: 'Allow GitHub readers to download the signed APK with its embedded speech model'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -108,9 +114,9 @@ jobs:
           mkdir -p dist
           cp "$APK" dist/android-teleprompter-signed-arm64.apk
 
-      # Keystore and models are never uploaded as separate artifacts.
-      # This workflow only produces a private Actions artifact for manual review.
-      - name: Upload signed APK
+      # The APK contains the speech model. A public repository artifact is not private.
+      - name: Upload signed APK (public opt-in)
+        if: ${{ inputs.upload_public_apk == true }}
         uses: actions/upload-artifact@v4
         with:
           name: android-teleprompter-signed-arm64
