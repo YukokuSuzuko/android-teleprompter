@@ -8,6 +8,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -30,10 +31,13 @@ import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -68,16 +72,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -105,6 +106,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DrawModifierNode
@@ -122,6 +126,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -203,7 +208,19 @@ fun PrompterScreen(
     val view = LocalView.current
     var controlsVisible by remember { mutableStateOf(true) }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var sheetExpanded by remember { mutableStateOf(false) }
+    val latestSettingsOpen by rememberUpdatedState(showSettingsSheet)
     var manualScrolledWhilePaused by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showSettingsSheet) {
+        showSettingsSheet = false
+    }
+
+    LaunchedEffect(showSettingsSheet) {
+        if (showSettingsSheet) {
+            sheetExpanded = false
+        }
+    }
 
     // Unified non-blocking bottom floating banner state
     var activeBanner by remember { mutableStateOf<PrompterBanner?>(null) }
@@ -378,7 +395,7 @@ fun PrompterScreen(
                     var cumulativeZoom = 1f
                     do {
                         val event = awaitPointerEvent()
-                        if (latestTouchLocked) continue
+                        if (latestTouchLocked || latestSettingsOpen) continue
                         val pressedCount = event.changes.count { it.pressed }
                         if (pressedCount >= 2) {
                             val zoomChange = event.calculateZoom()
@@ -1097,6 +1114,7 @@ fun PrompterScreen(
             exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 3 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .zIndex(20f)
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = bannerBottomPad)
@@ -1170,104 +1188,178 @@ fun PrompterScreen(
                 }
             }
         }
-    }
 
-    // ==================== MD3 MODAL BOTTOM SHEET (HALF-SCREEN LIVE PREVIEW + EXPAND TOGGLE) ====================
-    if (showSettingsSheet) {
-        val modeLabel = if (settings.isLandscape) "横屏" else "竖屏"
-        val marginRange = if (settings.isLandscape) 16f..220f else 8f..96f
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-        val innerScrollState = rememberScrollState()
-        val isExpanded = sheetState.currentValue == SheetValue.Expanded ||
-            sheetState.targetValue == SheetValue.Expanded
-
-        // Reset inner scroll to top when collapsing back to half-screen so Font Size & Margin stay visible
-        LaunchedEffect(isExpanded) {
-            if (!isExpanded && innerScrollState.value != 0) {
-                innerScrollState.scrollTo(0)
-            }
+        // ==================== IN-WINDOW MD3 SETTINGS SHEET (ZERO NESTED-SCROLL HIJACKING) ====================
+        // Dimmed scrim above the sheet (tap anywhere to dismiss)
+        AnimatedVisibility(
+            visible = showSettingsSheet,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(9f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showSettingsSheet = false }
+            )
         }
 
-        ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
-            sheetState = sheetState,
-            scrimColor = Color.Black.copy(alpha = 0.25f),
-            containerColor = cs.surfaceContainerLow,
-            contentColor = cs.onSurface,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            dragHandle = {
-                BottomSheetDefaults.DragHandle(color = cs.outline)
-            }
+        AnimatedVisibility(
+            visible = showSettingsSheet,
+            enter = slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it },
+            exit = slideOutVertically(tween(200, easing = FastOutSlowInEasing)) { it },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(10f)
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Sticky Non-Scrolling Sheet Header (dragging anywhere here directly expands/collapses sheet)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "提词与排版设置",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = cs.onSurface
-                        )
-                        Text(
-                            text = "横屏竖屏独立设置，互不干扰",
-                            fontSize = 12.sp,
-                            color = cs.onSurfaceVariant
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            onClick = {
-                                coroutineScope.launch {
-                                    if (isExpanded) sheetState.partialExpand() else sheetState.expand()
-                                }
-                            },
-                            color = cs.secondaryContainer,
-                            contentColor = cs.onSecondaryContainer,
-                            shape = CircleShape
-                        ) {
-                            Text(
-                                text = if (isExpanded) "收起" else "展开",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
+            val modeLabel = if (settings.isLandscape) "横屏" else "竖屏"
+            val marginRange = if (settings.isLandscape) 16f..220f else 8f..96f
+            val halfHeight = (viewportHeightDp * (if (settings.isLandscape) 0.62f else 0.52f))
+                .coerceAtLeast(260.dp)
+            val fullHeight = (viewportHeightDp * 0.92f).coerceAtLeast(halfHeight)
+            val innerScrollState = rememberScrollState()
+            var headerDragDeltaPx by remember { mutableFloatStateOf(0f) }
+
+            val animatedBaseHeight by animateDpAsState(
+                targetValue = if (sheetExpanded) fullHeight else halfHeight,
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                label = "settingsSheetHeight"
+            )
+            val currentSheetHeight = (animatedBaseHeight - with(density) { headerDragDeltaPx.toDp() })
+                .coerceIn(160.dp, fullHeight)
+
+            // Non-consuming nested scroll listener: auto-expands from half-screen on first upward swipe
+            // while returning Offset.Zero so inner verticalScroll responds IMMEDIATELY on the very first swipe!
+            val autoExpandConnection = remember {
+                object : NestedScrollConnection {
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        if (source == NestedScrollSource.UserInput && available.y < -8f && !sheetExpanded) {
+                            sheetExpanded = true
                         }
-                        Surface(
-                            onClick = { showSettingsSheet = false },
-                            color = cs.primaryContainer,
-                            contentColor = cs.onPrimaryContainer,
-                            shape = CircleShape
-                        ) {
-                            Text(
-                                text = "完成",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
-                        }
+                        return Offset.Zero
                     }
                 }
+            }
 
-                // Body scroll is enabled ONLY when Expanded so half-screen upward drags ALWAYS smoothly expand the sheet
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .verticalScroll(innerScrollState, enabled = isExpanded)
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
+            Surface(
+                color = cs.surfaceContainerLow,
+                contentColor = cs.onSurface,
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                shadowElevation = 16.dp,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(currentSheetHeight)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Dedicated Drag Handle + Sticky Header zone (tracks finger directly to expand/collapse/dismiss)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .draggable(
+                                orientation = Orientation.Vertical,
+                                state = rememberDraggableState { delta ->
+                                    headerDragDeltaPx = (headerDragDeltaPx + delta).coerceIn(-500f, 600f)
+                                },
+                                onDragStopped = { velocity ->
+                                    val upThreshold = with(density) { 40.dp.toPx() }
+                                    val downThreshold = with(density) { 60.dp.toPx() }
+                                    when {
+                                        headerDragDeltaPx < -upThreshold || velocity < -600f -> {
+                                            sheetExpanded = true
+                                        }
+                                        headerDragDeltaPx > downThreshold || velocity > 600f -> {
+                                            if (sheetExpanded) {
+                                                sheetExpanded = false
+                                                coroutineScope.launch { innerScrollState.scrollTo(0) }
+                                            } else {
+                                                showSettingsSheet = false
+                                            }
+                                        }
+                                    }
+                                    headerDragDeltaPx = 0f
+                                }
+                            ),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        BottomSheetDefaults.DragHandle(color = cs.outline)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "提词与排版设置",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = cs.onSurface
+                                )
+                                Text(
+                                    text = "横屏竖屏独立设置，互不干扰",
+                                    fontSize = 12.sp,
+                                    color = cs.onSurfaceVariant
+                                )
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    onClick = {
+                                        val next = !sheetExpanded
+                                        sheetExpanded = next
+                                        if (!next) {
+                                            coroutineScope.launch { innerScrollState.scrollTo(0) }
+                                        }
+                                    },
+                                    color = cs.secondaryContainer,
+                                    contentColor = cs.onSecondaryContainer,
+                                    shape = CircleShape
+                                ) {
+                                    Text(
+                                        text = if (sheetExpanded) "收起" else "展开",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                                Surface(
+                                    onClick = { showSettingsSheet = false },
+                                    color = cs.primaryContainer,
+                                    contentColor = cs.onPrimaryContainer,
+                                    shape = CircleShape
+                                ) {
+                                    Text(
+                                        text = "完成",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Always-enabled silky scroll body — zero Material3 ModalBottomSheet spring-tail blocking
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .nestedScroll(autoExpandConnection)
+                            .verticalScroll(innerScrollState)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
 
                 // ---------- Group 1: Typography & Layout ----------
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1707,6 +1799,7 @@ fun PrompterScreen(
                     )
                 }
             }
+                }
             }
         }
     }
