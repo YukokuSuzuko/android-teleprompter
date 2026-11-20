@@ -95,10 +95,13 @@ jobs:
           APK_SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
           test -n "$APK_SIGNER"
           "$APK_SIGNER" verify --verbose --print-certs "$APK"
-          unzip -Z1 "$APK" | grep -q '^assets/asr_zh/encoder.int8.onnx$'
-          unzip -Z1 "$APK" | grep -q '^assets/asr_zh/decoder.onnx$'
-          unzip -Z1 "$APK" | grep -q '^assets/asr_zh/joiner.int8.onnx$'
-          unzip -Z1 "$APK" | grep -q '^assets/asr_zh/tokens.txt$'
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/apk-entries.txt"
+          for name in encoder.int8.onnx decoder.onnx joiner.int8.onnx tokens.txt; do
+            grep -Fxq "assets/asr_zh/$name" "$RUNNER_TEMP/apk-entries.txt" || {
+              echo "::error::Missing model asset: $name"
+              exit 1
+            }
+          done
           mkdir -p dist
           cp "$APK" dist/android-teleprompter-signed-arm64.apk
 
