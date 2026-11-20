@@ -1,10 +1,16 @@
+![Android Teleprompter Banner & Adaptive Icons](docs/images/banner_icon.png)
+
 # Android Teleprompter（提词器）
 
 一款简洁好用的 **纯中文离线 AI 实时语音跟读 Android 提词器**，适用于日常口播、相机支架与反光镜提词场景，采用 Material Design 3 设计语言。
 
+## 界面预览
+
+![Android Teleprompter v1.2 UI Showcase](docs/images/ui_showcase.png)
+
 ## 核心特性
 
-- **纯离线中文语音跟读**：内置 `Sherpa-onnx` 中文流式 Zipformer 语音识别 + 无声调模糊拼音局部对齐引擎，支持语速自适应、精准锚点与备用匀速三种模式，断网片场依然稳定跟读。
+- **纯离线中文语音跟读**：内置 `Sherpa-onnx` 中文流式 Zipformer 语音识别 + 无声调模糊拼音局部对齐引擎，支持语速自适应、精准锚点与备用匀速三种模式，断网环境依然稳定跟读。
 - **防串行、防乱跳与高刷平滑滚屏**：
   - 自动请求设备当前分辨率最高刷新率（90/120/144Hz），帧同步阻尼平滑追赶；
   - 支持上方保留已读行数（0 / 1 / 2 行）、动态缩放居中左侧焦点条、暂停自由拖动、NG 重念自动回退、点击任意文字跳转，以及跟读中拖动自动回位轻提示（带一键暂停）。
@@ -21,11 +27,6 @@
   - 台词区恒为 OLED 纯黑 `#000000`，隐藏控制栏后零遮挡（双击屏幕或点击右下角淡透图标恢复），底部贴边 `2dp` 极细进度条可开关；
   - 6 款等宽等高 3×2 MD3 主题色（琥珀金 / 莫奈蓝 / 森林青 / 经典紫 / 珊瑚橙 / 三阶黑白明度「极简白」）；
   - `MD3-C`「叠色几何对话 · 暖琥珀」自适应矢量图标，完整支持 Android 13+ Material You 单色主题图标。
-
-## 设计预览
-
-- UI 交互预览：[`docs/md3_ui_preview.html`](docs/md3_ui_preview.html)
-- 图标方案预览：[`docs/app_icon_preview_md3.html`](docs/app_icon_preview_md3.html)
 
 ## 本地编译准备（离线模型未入库）
 
