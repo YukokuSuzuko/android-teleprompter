@@ -76,7 +76,7 @@ jobs:
               'decoder.onnx': '06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e',
               'joiner.int8.onnx': 'b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b',
           }
-          expected_tokens_sha256 = '6193c7ea1c96d0d9a1e9652789b40d13a8a913b434a5451e93158f5a09fd6652'
+          expected_tokens_lf_sha256 = '6722bd1585f46f84456b29c3550a343a3cc375b971645773c02ed8e0b4e2405c'
 
           def sha256_file(path: pathlib.Path) -> str:
               h = hashlib.sha256()
@@ -119,8 +119,12 @@ jobs:
           tokens_path = target / 'tokens.txt'
           if not tokens_path.is_file():
               raise SystemExit('Missing tokens.txt in repository')
-          if sha256_file(tokens_path) != expected_tokens_sha256:
-              raise SystemExit('SHA-256 mismatch for repository tokens.txt')
+          tokens_lf_bytes = tokens_path.read_bytes().replace(b'\r\n', b'\n')
+          actual_tokens_hash = hashlib.sha256(tokens_lf_bytes).hexdigest()
+          if actual_tokens_hash != expected_tokens_lf_sha256:
+              raise SystemExit(
+                  f'SHA-256 mismatch for repository tokens.txt: expected {expected_tokens_lf_sha256}, got {actual_tokens_hash}'
+              )
           print('Verified all 4 ASR model assets (3 ONNX + tokens.txt).')
           PY
 

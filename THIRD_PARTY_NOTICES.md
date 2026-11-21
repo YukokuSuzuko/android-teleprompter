@@ -49,7 +49,7 @@ The offline speech recognition feature uses the pre-trained Chinese streaming Zi
   - `encoder.int8.onnx` (`161,141,793` bytes): `5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f`
   - `decoder.onnx` (`5,165,083` bytes): `06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e`
   - `joiner.int8.onnx` (`1,033,416` bytes): `b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b`
-  - `tokens.txt` (`20,628` bytes, tracked in Git): `6193c7ea1c96d0d9a1e9652789b40d13a8a913b434a5451e93158f5a09fd6652`
+  - `tokens.txt` (`18,626` bytes LF in Git): `6722bd1585f46f84456b29c3550a343a3cc375b971645773c02ed8e0b4e2405c`
 - **Model License & Redistribution Notice**:
   - Although the `sherpa-onnx` inference engine is Apache-2.0, this specific model repository does **not** include a standalone model `LICENSE` file.
   - Its upstream checkpoint (`yuekai/icefall-asr-multi-zh-hans-zipformer-large`) is access-restricted on Hugging Face and was trained via `k2-fsa/icefall/egs/multi_zh-hans` on multiple Chinese speech corpora (including AISHELL-1/2/4, WenetSpeech, AliMeeting, MagicData, KeSpeech), some of which carry **non-commercial or academic-only** dataset license terms.
