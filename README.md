@@ -59,8 +59,8 @@
 | `ANDROID_STORE_PASSWORD` | keystore 密码 |
 | `ANDROID_KEY_ALIAS` | keystore 中的正式签名别名 |
 | `ANDROID_KEY_PASSWORD` | 签名密钥密码 |
-| `MODEL_BUNDLE_URL` | 私有或可信 HTTPS 地址，指向 `asr_zh.tar.gz`，压缩包根目录仅含 `encoder.int8.onnx`、`decoder.onnx`、`joiner.int8.onnx` 三个文件 |
-| `MODEL_BUNDLE_SHA256` | 上述压缩包的 SHA-256（64 位十六进制） |
+| `MODEL_BUNDLE_URL` | 可信 HTTPS 地址，支持官方 `k2-fsa/sherpa-onnx` 的 `.tar.bz2` 模型归档（`sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2`），或自定义 `.tar.gz`（含 `encoder.int8.onnx`、`decoder.onnx`、`joiner.int8.onnx`） |
+| `MODEL_BUNDLE_SHA256` | 上述归档文件的 SHA-256（64 位十六进制）；工作流还会进一步逐个校验解压后的 3 个 ONNX 与仓库内 `tokens.txt` 的固定 SHA-256，并拒绝 `CN=Android Debug` 证书签名的产物 |
 
 `tokens.txt` 已在仓库中；`sherpa-onnx-2.0.1.aar` 从上游正式 Release 下载并核对 SHA-256。构建前的校验不通过就会停止，不会发布半成品。
 
@@ -68,9 +68,12 @@
 
 ## 致谢与第三方开源组件
 
-- [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0) — 离线流式语音识别引擎
+- [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0，内含 MIT 许可的 ONNX Runtime) — 离线流式语音识别引擎
 - [Jetpack Compose & Material 3](https://developer.android.com/compose) (Apache-2.0) — Android 声明式 UI 框架
-- [pinyin4j 2.5.1](https://github.com/belerweb/pinyin4j) (BSD，见该版本上游 POM 的许可证声明) — 汉字转拼音工具
+- [pinyin4j 2.5.1](https://github.com/belerweb/pinyin4j) (Maven POM 声明 BSD；上游源码头声明 GPL-2.0-or-later，均与本项目 GPL-3.0 兼容) — 汉字转拼音工具
+- 离线中文语音模型 `sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`：来源、固定 SHA-256 及数据集许可提示详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+
+完整版权声明与模型再分发说明请参阅 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 ## 开源协议
 
