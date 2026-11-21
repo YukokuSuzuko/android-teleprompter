@@ -1,0 +1,170 @@
+name: Build signed release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_public_apk:
+        description: 'Allow GitHub readers to download the signed APK with its embedded speech model'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      MODEL_BUNDLE_URL: ${{ secrets.MODEL_BUNDLE_URL }}
+      MODEL_BUNDLE_SHA256: ${{ secrets.MODEL_BUNDLE_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          # sdkmanager's obsolete 'tools' package no longer exists.
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Require private signing and model inputs
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD MODEL_BUNDLE_URL MODEL_BUNDLE_SHA256; do
+            if [[ -z "${!name:-}" ]]; then echo "::error::Missing secret: $name"; exit 1; fi
+          done
+          if [[ -z "$KEYSTORE_BASE64" ]]; then echo "::error::Missing ANDROID_KEYSTORE_BASE64"; exit 1; fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
+          test -s "$RUNNER_TEMP/release-keystore.jks"
+
+      - name: Fetch verified sherpa-onnx AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar \
+            -o app/libs/sherpa-onnx-2.0.1.aar
+          echo "a8d09d1d32f3eb8520482c6d3d43fae674681c5b050385967c70a3c2c9bf0ee7  app/libs/sherpa-onnx-2.0.1.aar" | sha256sum -c -
+
+      - name: Fetch and validate complete speech model
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error "$MODEL_BUNDLE_URL" -o "$RUNNER_TEMP/asr_zh_bundle"
+          echo "$MODEL_BUNDLE_SHA256  $RUNNER_TEMP/asr_zh_bundle" | sha256sum -c -
+          python3 - <<'PY'
+          import hashlib, os, pathlib, shutil, tarfile
+
+          archive = pathlib.Path(os.environ['RUNNER_TEMP']) / 'asr_zh_bundle'
+          target = pathlib.Path('app/src/main/assets/asr_zh')
+          expected_onnx = {
+              'encoder.int8.onnx': '5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f',
+              'decoder.onnx': '06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e',
+              'joiner.int8.onnx': 'b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b',
+          }
+          expected_tokens_sha256 = '6193c7ea1c96d0d9a1e9652789b40d13a8a913b434a5451e93158f5a09fd6652'
+
+          def sha256_file(path: pathlib.Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          found = {}
+          with tarfile.open(archive, 'r:*') as tf:
+              for m in tf.getmembers():
+                  if not m.isfile():
+                      continue
+                  parts = pathlib.PurePosixPath(m.name).parts
+                  if not parts or '..' in parts or parts[0].startswith('/'):
+                      raise SystemExit('Unsafe path inside model archive: ' + m.name)
+                  base = parts[-1]
+                  if base in expected_onnx:
+                      if len(parts) > 2:
+                          raise SystemExit('Unexpected nesting depth for model file: ' + m.name)
+                      if base in found:
+                          raise SystemExit('Duplicate model file in archive: ' + base)
+                      if m.size <= 0:
+                          raise SystemExit('Empty ONNX file: ' + base)
+                      found[base] = m
+
+              missing = sorted(set(expected_onnx) - set(found))
+              if missing:
+                  raise SystemExit('Missing required ONNX files in archive: ' + ', '.join(missing))
+
+              target.mkdir(parents=True, exist_ok=True)
+              for name, expected_hash in sorted(expected_onnx.items()):
+                  dst_path = target / name
+                  with tf.extractfile(found[name]) as src, dst_path.open('wb') as dst:
+                      shutil.copyfileobj(src, dst)
+                  actual_hash = sha256_file(dst_path)
+                  if actual_hash != expected_hash:
+                      raise SystemExit(f'SHA-256 mismatch for {name}: expected {expected_hash}, got {actual_hash}')
+
+          tokens_path = target / 'tokens.txt'
+          if not tokens_path.is_file():
+              raise SystemExit('Missing tokens.txt in repository')
+          if sha256_file(tokens_path) != expected_tokens_sha256:
+              raise SystemExit('SHA-256 mismatch for repository tokens.txt')
+          print('Verified all 4 ASR model assets (3 ONNX + tokens.txt).')
+          PY
+
+      - name: Run tests and create signed release
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release-keystore.jks
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease
+
+      - name: Verify release certificate and APK contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APK_SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
+          test -n "$APK_SIGNER"
+          VERIFY_OUT=$("$APK_SIGNER" verify --verbose --print-certs "$APK")
+          echo "$VERIFY_OUT"
+          if echo "$VERIFY_OUT" | grep -qi "CN=Android Debug"; then
+            echo "::error::Refusing release APK signed with Android Debug certificate"
+            exit 1
+          fi
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/apk-entries.txt"
+          for name in encoder.int8.onnx decoder.onnx joiner.int8.onnx tokens.txt; do
+            grep -Fxq "assets/asr_zh/$name" "$RUNNER_TEMP/apk-entries.txt" || {
+              echo "::error::Missing model asset: $name"
+              exit 1
+            }
+          done
+          mkdir -p dist
+          cp "$APK" dist/android-teleprompter-signed-arm64.apk
+          ls -lh dist/android-teleprompter-signed-arm64.apk
+          sha256sum dist/android-teleprompter-signed-arm64.apk
+
+      # The APK contains the speech model. A public repository artifact is not private.
+      - name: Upload signed APK (public opt-in)
+        if: ${{ inputs.upload_public_apk == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-teleprompter-signed-arm64
+          path: dist/android-teleprompter-signed-arm64.apk
+          if-no-files-found: error
+          retention-days: 7
