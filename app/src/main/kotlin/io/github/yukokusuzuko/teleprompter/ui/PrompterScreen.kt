@@ -1820,7 +1820,7 @@ fun PrompterScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "提词器 v1.2 · by YukokuSuzuko · GitHub ↗",
+                        text = "提词器 v1.2.1 · by YukokuSuzuko · GitHub ↗",
                         color = cs.onSurfaceVariant.copy(alpha = 0.78f),
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center,

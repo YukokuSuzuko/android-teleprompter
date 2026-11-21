@@ -30,7 +30,7 @@
 
 ## 下载安装
 
-前往 [Releases 页面](https://github.com/YukokuSuzuko/android-teleprompter/releases/latest) 下载最新的 `android-teleprompter-v1.2-arm64.apk`（已内置离线中文语音识别模型，安装即用，支持 Android 8.0+ / arm64-v8a 设备）。
+前往 [Releases 页面](https://github.com/YukokuSuzuko/android-teleprompter/releases/latest) 下载最新的 `android-teleprompter-v1.2.1-arm64.apk`（已内置离线中文语音识别模型，安装即用，支持 Android 8.0+ / arm64-v8a 设备）。
 
 ## 本地编译准备（离线模型未入库）
 

@@ -23,8 +23,8 @@ android {
     applicationId = "io.github.yukokusuzuko.teleprompter"
     minSdk = 26
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2"
+    versionCode = 4
+    versionName = "1.2.1"
     ndk {
       abiFilters += "arm64-v8a"
     }
