@@ -6,6 +6,7 @@ package io.github.yukokusuzuko.teleprompter.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.io.File
 
 enum class FollowMode(val displayName: String, val description: String) {
     ADAPTIVE_SPEED(
@@ -110,6 +111,27 @@ class ScriptStore(context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("teleprompter_prefs", Context.MODE_PRIVATE)
+    private val libraryRepository = ScriptLibraryRepository(File(context.filesDir, "scripts_library.json"))
+
+    fun loadLibrary(): ScriptLibraryState =
+        libraryRepository.loadOrMigrate(
+            legacyScript = loadScript(),
+            legacyBackup = loadDraftBackup(),
+            defaultSampleScript = DEFAULT_SAMPLE_SCRIPT,
+            nowMs = System.currentTimeMillis()
+        )
+
+    fun saveLibrary(state: ScriptLibraryState) {
+        libraryRepository.save(state)
+        syncLegacyActiveDraft(state.activeDocument)
+    }
+
+    fun syncLegacyActiveDraft(doc: ScriptDocument) {
+        prefs.edit()
+            .putString(KEY_SCRIPT, doc.content)
+            .putString(KEY_DRAFT_BACKUP, doc.backupContent)
+            .apply()
+    }
 
     fun loadScript(): String =
         prefs.getString(KEY_SCRIPT, DEFAULT_SAMPLE_SCRIPT) ?: DEFAULT_SAMPLE_SCRIPT

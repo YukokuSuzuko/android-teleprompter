@@ -10,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import io.github.yukokusuzuko.teleprompter.asr.StreamingAsrEngine
 import io.github.yukokusuzuko.teleprompter.data.FollowMode
 import io.github.yukokusuzuko.teleprompter.data.PrompterSettings
+import io.github.yukokusuzuko.teleprompter.data.ScriptDocument
+import io.github.yukokusuzuko.teleprompter.data.ScriptLibraryState
 import io.github.yukokusuzuko.teleprompter.data.ScriptStore
 import io.github.yukokusuzuko.teleprompter.data.StoredDraft
 import io.github.yukokusuzuko.teleprompter.tracker.ChineseScriptTracker
@@ -42,7 +44,11 @@ data class TeleprompterUiState(
     val modelStatus: String = "离线语音模型加载中…",
     val heardTailText: String = "",
     val editorMessage: String? = null,
-    val hasDraftBackup: Boolean = false
+    val hasDraftBackup: Boolean = false,
+    val documents: List<ScriptDocument> = emptyList(),
+    val activeDocumentId: String = "",
+    val activeDocumentTitle: String = "",
+    val activeDocumentPinned: Boolean = false
 )
 
 class TeleprompterViewModel(application: Application) : AndroidViewModel(application) {
@@ -50,23 +56,29 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
     private val store = ScriptStore(application)
     private val asrEngine = StreamingAsrEngine(application)
     private val trackerLock = Any()
-    private val initialRawScript = store.loadScript()
+    private var libraryState: ScriptLibraryState = store.loadLibrary()
+    private val initialActiveDoc = libraryState.activeDocument
     private val initialSettings = store.loadSettings()
     private val initialPlaybackScript = ChineseScriptTracker.formatForPlayback(
-        initialRawScript,
+        initialActiveDoc.content,
         initialSettings.stripLineBreaks
     )
     private var tracker = ChineseScriptTracker(initialPlaybackScript)
+    private var librarySaveJob: Job? = null
     private var uniformJob: Job? = null
     private var lastSpeechEventMs: Long = 0L
     private var emaCharsPerSec: Float = 0f
 
     private val _uiState = MutableStateFlow(
         TeleprompterUiState(
-            script = initialRawScript,
+            script = initialActiveDoc.content,
             prompterScript = initialPlaybackScript,
             settings = initialSettings,
-            hasDraftBackup = store.loadDraftBackup() != null
+            hasDraftBackup = initialActiveDoc.backupContent != null,
+            documents = libraryState.sortedDocuments(),
+            activeDocumentId = initialActiveDoc.id,
+            activeDocumentTitle = initialActiveDoc.displayTitle,
+            activeDocumentPinned = initialActiveDoc.pinned
         )
     )
     val uiState: StateFlow<TeleprompterUiState> = _uiState.asStateFlow()
@@ -106,15 +118,54 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun updateScript(newScript: String) {
+        val next = libraryState.updateActiveContent(newScript, System.currentTimeMillis())
+        libraryState = next
+        val active = next.activeDocument
         store.saveScript(newScript)
-        _uiState.update { it.copy(script = newScript) }
+        _uiState.update {
+            it.copy(
+                script = newScript,
+                documents = next.sortedDocuments(),
+                activeDocumentId = active.id,
+                activeDocumentTitle = active.displayTitle,
+                activeDocumentPinned = active.pinned
+            )
+        }
+        librarySaveJob?.cancel()
+        librarySaveJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(250L)
+            store.saveLibrary(next)
+        }
+    }
+
+    private fun commitLibraryState(
+        next: ScriptLibraryState,
+        message: String? = null,
+        clearMessage: Boolean = false
+    ) {
+        librarySaveJob?.cancel()
+        libraryState = next
+        val active = next.activeDocument
+        store.syncLegacyActiveDraft(active)
+        _uiState.update {
+            it.copy(
+                script = active.content,
+                hasDraftBackup = active.backupContent != null,
+                documents = next.sortedDocuments(),
+                activeDocumentId = active.id,
+                activeDocumentTitle = active.displayTitle,
+                activeDocumentPinned = active.pinned,
+                editorMessage = if (clearMessage) null else message ?: it.editorMessage
+            )
+        }
+        librarySaveJob = viewModelScope.launch(Dispatchers.IO) {
+            store.saveLibrary(next)
+        }
     }
 
     private fun changeDraft(message: String? = null, action: (StoredDraft) -> StoredDraft) {
-        val draft = store.updateDraft(action)
-        _uiState.update {
-            it.copy(script = draft.text, hasDraftBackup = draft.backup != null, editorMessage = message ?: it.editorMessage)
-        }
+        val next = libraryState.transformActiveDraft(System.currentTimeMillis(), action)
+        commitLibraryState(next, message = message)
     }
 
     fun replaceDraft(text: String) = changeDraft { it.replaceWith(text) }
@@ -122,6 +173,49 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
     fun clearDraft() = changeDraft("已清空台词") { it.clear() }
 
     fun restoreDraft() = changeDraft("已恢复备份台词") { it.restore() }
+
+    fun selectDocument(id: String) {
+        val next = libraryState.selectDocument(id)
+        commitLibraryState(next, clearMessage = true)
+    }
+
+    fun createNewDocument() {
+        val next = libraryState.createDocument(
+            title = "",
+            content = "",
+            nowMs = System.currentTimeMillis()
+        )
+        commitLibraryState(next, message = "已新建空白稿件")
+    }
+
+    fun importDocumentAsNew(title: String, content: String) {
+        val next = libraryState.createDocument(
+            title = title,
+            content = content,
+            nowMs = System.currentTimeMillis()
+        )
+        commitLibraryState(next, message = "已导入新稿件（${content.length} 字）")
+    }
+
+    fun renameDocument(id: String, newTitle: String) {
+        val next = libraryState.renameDocument(id, newTitle, System.currentTimeMillis())
+        if (next != libraryState) {
+            commitLibraryState(next, message = "已重命名稿件")
+        }
+    }
+
+    fun togglePinDocument(id: String) {
+        val next = libraryState.togglePin(id)
+        if (next != libraryState) {
+            val nowPinned = next.documents.firstOrNull { it.id == id }?.pinned == true
+            commitLibraryState(next, message = if (nowPinned) "已置顶稿件" else "已取消置顶")
+        }
+    }
+
+    fun deleteDocument(id: String) {
+        val next = libraryState.deleteDocument(id, System.currentTimeMillis())
+        commitLibraryState(next, message = "已删除稿件")
+    }
 
     fun loadSampleScript() {
         replaceDraft(ScriptStore.DEFAULT_SAMPLE_SCRIPT)
@@ -224,6 +318,8 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun enterPrompter(hasMicPermission: Boolean) {
+        librarySaveJob?.cancel()
+        store.saveLibrary(libraryState)
         val state = _uiState.value
         val formatted = ChineseScriptTracker.formatForPlayback(
             state.script,
@@ -509,6 +605,8 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
 
     override fun onCleared() {
         super.onCleared()
+        librarySaveJob?.cancel()
+        store.saveLibrary(libraryState)
         uniformJob?.cancel()
         asrEngine.release()
     }

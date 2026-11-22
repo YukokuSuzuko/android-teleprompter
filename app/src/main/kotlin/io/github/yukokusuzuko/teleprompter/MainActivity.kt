@@ -5,10 +5,13 @@
 package io.github.yukokusuzuko.teleprompter
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.view.Display
 import android.view.KeyEvent
 import android.view.Surface
@@ -44,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: TeleprompterViewModel by viewModels()
     private var scriptImportRequest = 0L
+    private var importTxtAsNewDocument = false
 
     // Volume-up + volume-down chord tracking for touch-lock toggle
     private var isVolumeUpPressed = false
@@ -69,18 +73,37 @@ class MainActivity : ComponentActivity() {
                 contract = ActivityResultContracts.OpenDocument()
             ) { uri ->
                 val request = ++scriptImportRequest
+                val asNew = importTxtAsNewDocument
+                importTxtAsNewDocument = false
                 if (uri != null) {
                     val draftAtSelection = viewModel.uiState.value.script
                     lifecycleScope.launch {
-                        val text = withContext(Dispatchers.IO) {
-                            readTxtFileSmart(applicationContext, uri)
+                        val (text, title) = withContext(Dispatchers.IO) {
+                            val content = readTxtFileSmart(applicationContext, uri)
+                            val docTitle = if (asNew && content != null) {
+                                queryTxtFileTitle(applicationContext, uri)
+                            } else {
+                                ""
+                            }
+                            content to docTitle
                         }
                         if (request != scriptImportRequest) return@launch
                         val current = viewModel.uiState.value
                         when {
                             text == null -> viewModel.showEditorMessage(
-                                "未导入，原台词未更改。请选择可读取的非空 UTF-8 或 GB18030 文本（最多 1 MiB）"
+                                if (asNew) {
+                                    "未导入新稿件。请选择可读取的非空 UTF-8 或 GB18030 文本（最多 1 MiB）"
+                                } else {
+                                    "未导入，原台词未更改。请选择可读取的非空 UTF-8 或 GB18030 文本（最多 1 MiB）"
+                                }
                             )
+                            asNew -> {
+                                if (current.isPrompterActive) {
+                                    viewModel.showEditorMessage("已退出编辑页，未导入新稿件")
+                                } else {
+                                    viewModel.importDocumentAsNew(title, text)
+                                }
+                            }
                             current.isPrompterActive || current.script != draftAtSelection ->
                                 viewModel.showEditorMessage("编辑状态已改变，未替换台词。请重新导入文件")
                             else -> {
@@ -193,6 +216,10 @@ class MainActivity : ComponentActivity() {
                     } else {
                         EditorScreen(
                             script = state.script,
+                            documents = state.documents,
+                            activeDocumentId = state.activeDocumentId,
+                            activeDocumentTitle = state.activeDocumentTitle,
+                            activeDocumentPinned = state.activeDocumentPinned,
                             onScriptChange = viewModel::updateScript,
                             onPasteScript = viewModel::replaceDraft,
                             onClearDraft = viewModel::clearDraft,
@@ -200,8 +227,18 @@ class MainActivity : ComponentActivity() {
                             onRestoreDraft = viewModel::restoreDraft,
                             onLoadSample = viewModel::loadSampleScript,
                             onOpenTxtPicker = {
+                                importTxtAsNewDocument = false
                                 txtPickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
                             },
+                            onOpenTxtPickerAsNew = {
+                                importTxtAsNewDocument = true
+                                txtPickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
+                            },
+                            onSelectDocument = viewModel::selectDocument,
+                            onCreateDocument = viewModel::createNewDocument,
+                            onRenameDocument = viewModel::renameDocument,
+                            onTogglePinDocument = viewModel::togglePinDocument,
+                            onDeleteDocument = viewModel::deleteDocument,
                             onStartPrompter = {
                                 if (hasMicPermission()) {
                                     viewModel.enterPrompter(hasMicPermission = true)
@@ -356,6 +393,22 @@ class MainActivity : ComponentActivity() {
                 windowManager.defaultDisplay.rotation
             }
         }.getOrDefault(Surface.ROTATION_0)
+    }
+
+    private fun queryTxtFileTitle(context: Context, uri: Uri): String {
+        val raw = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) cursor.getString(idx) else null
+                    } else {
+                        null
+                    }
+                }
+        }.getOrNull() ?: return ""
+        val stem = raw.substringBeforeLast('.').ifBlank { raw }.trim()
+        return stem.take(40)
     }
 
     private fun hasMicPermission(): Boolean =

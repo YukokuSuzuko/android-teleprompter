@@ -323,4 +323,219 @@ object TeleprompterIcons {
             }
         }.build()
     }
+
+    val Library: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Library",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(4f, 6f)
+                horizontalLineTo(2f)
+                verticalLineTo(20f)
+                curveTo(2f, 21.1f, 2.9f, 22f, 4f, 22f)
+                horizontalLineTo(18f)
+                verticalLineTo(20f)
+                horizontalLineTo(4f)
+                verticalLineTo(6f)
+                close()
+                moveTo(20f, 2f)
+                horizontalLineTo(8f)
+                curveTo(6.9f, 2f, 6f, 2.9f, 6f, 4f)
+                verticalLineTo(16f)
+                curveTo(6f, 17.1f, 6.9f, 18f, 8f, 18f)
+                horizontalLineTo(20f)
+                curveTo(21.1f, 18f, 22f, 17.1f, 22f, 16f)
+                verticalLineTo(4f)
+                curveTo(22f, 2.9f, 21.1f, 2f, 20f, 2f)
+                close()
+                moveTo(19f, 11f)
+                horizontalLineTo(9f)
+                verticalLineTo(9f)
+                horizontalLineTo(19f)
+                verticalLineTo(11f)
+                close()
+                moveTo(15f, 15f)
+                horizontalLineTo(9f)
+                verticalLineTo(13f)
+                horizontalLineTo(15f)
+                verticalLineTo(15f)
+                close()
+                moveTo(19f, 7f)
+                horizontalLineTo(9f)
+                verticalLineTo(5f)
+                horizontalLineTo(19f)
+                verticalLineTo(7f)
+                close()
+            }
+        }.build()
+    }
+
+    val Add: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Add",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(19f, 13f)
+                horizontalLineTo(13f)
+                verticalLineTo(19f)
+                horizontalLineTo(11f)
+                verticalLineTo(13f)
+                horizontalLineTo(5f)
+                verticalLineTo(11f)
+                horizontalLineTo(11f)
+                verticalLineTo(5f)
+                horizontalLineTo(13f)
+                verticalLineTo(11f)
+                horizontalLineTo(19f)
+                verticalLineTo(13f)
+                close()
+            }
+        }.build()
+    }
+
+    val Search: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Search",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round
+            ) {
+                moveTo(10.5f, 4f)
+                curveTo(14.09f, 4f, 17f, 6.91f, 17f, 10.5f)
+                curveTo(17f, 14.09f, 14.09f, 17f, 10.5f, 17f)
+                curveTo(6.91f, 17f, 4f, 14.09f, 4f, 10.5f)
+                curveTo(4f, 6.91f, 6.91f, 4f, 10.5f, 4f)
+                close()
+                moveTo(15.5f, 15.5f)
+                lineTo(20.5f, 20.5f)
+            }
+        }.build()
+    }
+
+    val Close: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Close",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round
+            ) {
+                moveTo(6f, 6f)
+                lineTo(18f, 18f)
+                moveTo(18f, 6f)
+                lineTo(6f, 18f)
+            }
+        }.build()
+    }
+
+    val Pin: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Pin",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(16f, 12f)
+                verticalLineTo(4f)
+                horizontalLineTo(17f)
+                verticalLineTo(2f)
+                horizontalLineTo(7f)
+                verticalLineTo(4f)
+                horizontalLineTo(8f)
+                verticalLineTo(12f)
+                lineTo(6f, 14f)
+                verticalLineTo(16f)
+                horizontalLineTo(11.2f)
+                verticalLineTo(22f)
+                horizontalLineTo(12.8f)
+                verticalLineTo(16f)
+                horizontalLineTo(18f)
+                verticalLineTo(14f)
+                lineTo(16f, 12f)
+                close()
+            }
+        }.build()
+    }
+
+    val Edit: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Edit",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(3f, 17.25f)
+                verticalLineTo(21f)
+                horizontalLineTo(6.75f)
+                lineTo(17.81f, 9.94f)
+                lineTo(14.06f, 6.19f)
+                lineTo(3f, 17.25f)
+                close()
+                moveTo(20.71f, 7.04f)
+                curveTo(21.1f, 6.65f, 21.1f, 6.02f, 20.71f, 5.63f)
+                lineTo(18.37f, 3.29f)
+                curveTo(17.98f, 2.9f, 17.35f, 2.9f, 16.96f, 3.29f)
+                lineTo(15.13f, 5.12f)
+                lineTo(18.88f, 8.87f)
+                lineTo(20.71f, 7.04f)
+                close()
+            }
+        }.build()
+    }
+
+    val Delete: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Delete",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(6f, 19f)
+                curveTo(6f, 20.1f, 6.9f, 21f, 8f, 21f)
+                horizontalLineTo(16f)
+                curveTo(17.1f, 21f, 18f, 20.1f, 18f, 19f)
+                verticalLineTo(7f)
+                horizontalLineTo(6f)
+                verticalLineTo(19f)
+                close()
+                moveTo(19f, 4f)
+                horizontalLineTo(15.5f)
+                lineTo(14.5f, 3f)
+                horizontalLineTo(9.5f)
+                lineTo(8.5f, 4f)
+                horizontalLineTo(5f)
+                verticalLineTo(6f)
+                horizontalLineTo(19f)
+                verticalLineTo(4f)
+                close()
+            }
+        }.build()
+    }
 }
