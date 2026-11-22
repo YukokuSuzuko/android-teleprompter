@@ -1,0 +1,79 @@
+name: Publish signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Completed Build signed release APK workflow run ID'
+        type: string
+        required: true
+      tag:
+        description: 'Git release tag (e.g. v1.4)'
+        type: string
+        required: true
+      target_sha:
+        description: 'Target commit SHA'
+        type: string
+        required: true
+      title:
+        description: 'Release title'
+        type: string
+        required: true
+      apk_name:
+        description: 'Release APK asset filename'
+        type: string
+        required: true
+      expected_sha256:
+        description: 'Expected SHA-256 of the signed APK'
+        type: string
+        required: true
+      release_notes:
+        description: 'Markdown release notes'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download, verify, and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+          TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          TITLE: ${{ inputs.title }}
+          APK_NAME: ${{ inputs.apk_name }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$RUN_ID" --repo "$REPO" -n android-teleprompter-signed-arm64 -D dist
+          test -s dist/android-teleprompter-signed-arm64.apk
+          echo "$EXPECTED_SHA256  dist/android-teleprompter-signed-arm64.apk" | sha256sum -c -
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+
+          apk = pathlib.Path('dist/android-teleprompter-signed-arm64.apk')
+          with zipfile.ZipFile(apk) as zf:
+              data = zf.read('assets/asr_zh/tokens.txt')
+          expected = '6722bd1585f46f84456b29c3550a343a3cc375b971645773c02ed8e0b4e2405c'
+          actual = hashlib.sha256(data).hexdigest()
+          assert len(data) == 18626, f'Unexpected tokens.txt size: {len(data)}'
+          assert actual == expected, f'tokens.txt SHA-256 mismatch: {actual}'
+          print(f'Verified tokens.txt ({len(data)} bytes, SHA-256 {actual})')
+          PY
+          mv dist/android-teleprompter-signed-arm64.apk "dist/$APK_NAME"
+          ls -lh "dist/$APK_NAME"
+          gh release create "$TAG" "dist/$APK_NAME" \
+            --repo "$REPO" \
+            --target "$TARGET_SHA" \
+            --title "$TITLE" \
+            --notes "$RELEASE_NOTES"
