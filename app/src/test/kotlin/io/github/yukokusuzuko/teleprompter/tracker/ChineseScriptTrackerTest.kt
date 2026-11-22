@@ -7,6 +7,26 @@ import org.junit.Test
 class ChineseScriptTrackerTest {
 
     @Test
+    fun uniformStepAdvancesAcrossSharedDigitOffsetsAndStopsAtEnd() {
+        val tracker = ChineseScriptTracker("100 A")
+        val firstOffset = tracker.currentRawOffset()
+        tracker.stepForward()
+        assertEquals(firstOffset, tracker.currentRawOffset())
+        assertEquals(1, tracker.tokenCursor)
+        repeat(tracker.tokens.size) { tracker.stepForward() }
+        assertEquals(tracker.tokens.lastIndex, tracker.tokenCursor)
+        assertEquals(4, tracker.currentRawOffset())
+    }
+
+    @Test
+    fun restoringTokenIndexKeepsPositionWithinNumeral() {
+        val tracker = ChineseScriptTracker("100 A")
+        tracker.jumpToTokenIndex(1)
+        assertEquals(1, tracker.tokenCursor)
+        assertEquals(0, tracker.currentRawOffset())
+    }
+
+    @Test
     fun exactChineseReading_advancesCursorSmoothly() {
         val script = "大家好，欢迎来到今天的拍摄现场。今天我们不用死记硬背长篇台词。"
         val tracker = ChineseScriptTracker(script)
