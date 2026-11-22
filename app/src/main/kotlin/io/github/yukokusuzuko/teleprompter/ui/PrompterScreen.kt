@@ -58,7 +58,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -946,11 +945,11 @@ fun PrompterScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .padding(horizontal = 8.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left: M3 FloatingToolbar Pill
@@ -963,8 +962,8 @@ fun PrompterScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .padding(horizontal = 5.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Compact A- / A+ Quick Font Pill Group
@@ -978,14 +977,16 @@ fun PrompterScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                                         .clickable { triggerFontChange(settings.activeFontSizeSp - 2f) }
-                                        .padding(horizontal = 9.dp, vertical = 9.dp),
+                                        .padding(horizontal = 7.dp, vertical = 9.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "A-",
                                         color = cs.onSurface,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                                 Box(
@@ -998,14 +999,16 @@ fun PrompterScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp))
                                         .clickable { triggerFontChange(settings.activeFontSizeSp + 2f) }
-                                        .padding(horizontal = 9.dp, vertical = 9.dp),
+                                        .padding(horizontal = 7.dp, vertical = 9.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "A+",
                                         color = cs.primary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -1015,6 +1018,7 @@ fun PrompterScreen(
                             icon = TeleprompterIcons.Rewind,
                             label = "回退",
                             tint = cs.onSurface,
+                            modifier = Modifier.weight(1f),
                             onClick = {
                                 manualScrolledWhilePaused = false
                                 onRewindStep()
@@ -1025,6 +1029,7 @@ fun PrompterScreen(
                             icon = TeleprompterIcons.SkipPrevious,
                             label = "重头",
                             tint = cs.onSurface,
+                            modifier = Modifier.weight(1f),
                             onClick = {
                                 manualScrolledWhilePaused = false
                                 onResetToStart()
@@ -1035,6 +1040,7 @@ fun PrompterScreen(
                             icon = TeleprompterIcons.RotateScreen,
                             label = if (settings.isLandscape) "竖屏" else "横屏",
                             tint = cs.onSecondaryContainer,
+                            modifier = Modifier.weight(1f),
                             onClick = onToggleOrientation
                         )
 
@@ -1042,6 +1048,7 @@ fun PrompterScreen(
                             icon = TeleprompterIcons.Tune,
                             label = "设置",
                             tint = cs.primary,
+                            modifier = Modifier.weight(1f),
                             onClick = { showSettingsSheet = true }
                         )
                     }
@@ -1057,7 +1064,7 @@ fun PrompterScreen(
                     onClick = onToggleFollowOrPlay,
                     shape = RoundedCornerShape(fabCornerRadius),
                     modifier = Modifier.height(50.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = cs.primary,
                         contentColor = cs.onPrimary
@@ -1073,7 +1080,8 @@ fun PrompterScreen(
                         text = if (isActivelyFollowing) "暂停" else "继续",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -2063,15 +2071,15 @@ private fun ToolbarIconAction(
     icon: ImageVector,
     label: String,
     tint: Color,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Column(
-        modifier = Modifier
-            .widthIn(min = 48.dp)
+        modifier = modifier
             .heightIn(min = 44.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 2.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -2086,7 +2094,8 @@ private fun ToolbarIconAction(
             color = tint,
             fontSize = 10.sp,
             lineHeight = 12.sp,
-            maxLines = 1
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
