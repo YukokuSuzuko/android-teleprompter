@@ -118,6 +118,20 @@ class ScriptStore(context: Context) {
         prefs.edit().putString(KEY_SCRIPT, script).apply()
     }
 
+    internal fun loadDraftBackup(): String? = prefs.getString(KEY_DRAFT_BACKUP, null)
+
+    internal fun updateDraft(action: (StoredDraft) -> StoredDraft): StoredDraft {
+        val current = StoredDraft(loadScript(), loadDraftBackup())
+        val next = action(current)
+        if (next != current) {
+            prefs.edit()
+                .putString(KEY_SCRIPT, next.text)
+                .putString(KEY_DRAFT_BACKUP, next.backup)
+                .apply()
+        }
+        return next
+    }
+
     fun loadSettings(): PrompterSettings {
         val version = prefs.getInt(KEY_PREFS_VERSION, 1)
         val useNewDefaults = version < CURRENT_PREFS_VERSION
@@ -191,6 +205,7 @@ class ScriptStore(context: Context) {
         private const val CURRENT_PREFS_VERSION = 3
         private const val KEY_PREFS_VERSION = "prefs_version"
         private const val KEY_SCRIPT = "script_text"
+        private const val KEY_DRAFT_BACKUP = "script_text_backup"
         private const val KEY_PORTRAIT_FONT = "portrait_font_sp"
         private const val KEY_PORTRAIT_MARGIN = "portrait_margin_dp"
         private const val KEY_LANDSCAPE_FONT = "landscape_font_sp"

@@ -11,6 +11,7 @@ import io.github.yukokusuzuko.teleprompter.asr.StreamingAsrEngine
 import io.github.yukokusuzuko.teleprompter.data.FollowMode
 import io.github.yukokusuzuko.teleprompter.data.PrompterSettings
 import io.github.yukokusuzuko.teleprompter.data.ScriptStore
+import io.github.yukokusuzuko.teleprompter.data.StoredDraft
 import io.github.yukokusuzuko.teleprompter.tracker.ChineseScriptTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +41,8 @@ data class TeleprompterUiState(
     val isModelReady: Boolean = false,
     val modelStatus: String = "离线语音模型加载中…",
     val heardTailText: String = "",
-    val editorMessage: String? = null
+    val editorMessage: String? = null,
+    val hasDraftBackup: Boolean = false
 )
 
 class TeleprompterViewModel(application: Application) : AndroidViewModel(application) {
@@ -63,7 +65,8 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
         TeleprompterUiState(
             script = initialRawScript,
             prompterScript = initialPlaybackScript,
-            settings = initialSettings
+            settings = initialSettings,
+            hasDraftBackup = store.loadDraftBackup() != null
         )
     )
     val uiState: StateFlow<TeleprompterUiState> = _uiState.asStateFlow()
@@ -107,9 +110,21 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
         _uiState.update { it.copy(script = newScript) }
     }
 
+    private fun changeDraft(message: String? = null, action: (StoredDraft) -> StoredDraft) {
+        val draft = store.updateDraft(action)
+        _uiState.update {
+            it.copy(script = draft.text, hasDraftBackup = draft.backup != null, editorMessage = message ?: it.editorMessage)
+        }
+    }
+
+    fun replaceDraft(text: String) = changeDraft { it.replaceWith(text) }
+
+    fun clearDraft() = changeDraft("已清空台词") { it.clear() }
+
+    fun restoreDraft() = changeDraft("已恢复备份台词") { it.restore() }
+
     fun loadSampleScript() {
-        val sample = ScriptStore.DEFAULT_SAMPLE_SCRIPT
-        updateScript(sample)
+        replaceDraft(ScriptStore.DEFAULT_SAMPLE_SCRIPT)
     }
 
     fun showEditorMessage(message: String?) {
@@ -127,10 +142,7 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
             val (offset, endOffset, progress) = synchronized(trackerLock) {
                 val oldCursor = tracker.tokenCursor
                 val newTracker = ChineseScriptTracker(formatted)
-                if (newTracker.tokens.isNotEmpty()) {
-                    val targetIdx = oldCursor.coerceIn(0, newTracker.tokens.lastIndex)
-                    newTracker.jumpToRawOffset(newTracker.tokens[targetIdx].rawOffset)
-                }
+                newTracker.jumpToTokenIndex(oldCursor)
                 tracker = newTracker
                 Triple(
                     tracker.currentRawOffset(),
@@ -473,10 +485,9 @@ class TeleprompterViewModel(application: Application) : AndroidViewModel(applica
                             true
                         )
                     } else {
-                        val nextOffset = tokens[tracker.tokenCursor + 1].rawOffset
-                        tracker.jumpToRawOffset(nextOffset)
+                        val nextOffset = tracker.stepForward()
                         Quad(
-                            tracker.currentRawOffset(),
+                            nextOffset,
                             tracker.currentHighlightEndOffset(),
                             tracker.progressFraction(),
                             tracker.tokenCursor >= tokens.lastIndex

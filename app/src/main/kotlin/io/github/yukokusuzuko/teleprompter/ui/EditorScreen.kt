@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -36,7 +37,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -46,15 +50,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.yukokusuzuko.teleprompter.ui.theme.PrompterDangerRed
-import java.nio.ByteBuffer
-import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
+import io.github.yukokusuzuko.teleprompter.data.readBoundedTxt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditorScreen(
     script: String,
     onScriptChange: (String) -> Unit,
+    onPasteScript: (String) -> Unit,
+    onClearDraft: () -> Unit,
+    hasDraftBackup: Boolean,
+    onRestoreDraft: () -> Unit,
     onLoadSample: () -> Unit,
     onOpenTxtPicker: () -> Unit,
     onStartPrompter: () -> Unit,
@@ -65,6 +71,24 @@ fun EditorScreen(
     val cs = MaterialTheme.colorScheme
     val effectiveChars = script.count { !it.isWhitespace() }
     val estimatedMinutes = effectiveChars / 220f
+    val confirmClear = remember(script) { mutableStateOf(false) }
+
+    if (confirmClear.value) {
+        AlertDialog(
+            onDismissRequest = { confirmClear.value = false },
+            title = { Text("清空当前台词？") },
+            text = { Text("清空前会备份当前非空白台词，替换上一份备份。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear.value = false
+                    onClearDraft()
+                }) { Text("清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear.value = false }) { Text("取消") }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -119,10 +143,10 @@ fun EditorScreen(
                 onClick = {
                     val cm = context.getSystemService(ClipboardManager::class.java)
                     val clip = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                    if (clip.isNullOrEmpty()) {
+                    if (clip.isNullOrBlank()) {
                         onShowMessage("剪贴板里没有文字")
                     } else {
-                        onScriptChange(clip)
+                        onPasteScript(clip)
                         onShowMessage("已从剪贴板导入 ${clip.length} 字")
                     }
                 },
@@ -161,12 +185,27 @@ fun EditorScreen(
             }
 
             OutlinedButton(
-                onClick = { onScriptChange("") },
+                onClick = { confirmClear.value = true },
+                enabled = script.isNotEmpty(),
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, cs.outlineVariant),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text("清空", color = PrompterDangerRed, fontSize = 13.sp)
+                Text(
+                    text = "清空",
+                    color = if (script.isNotEmpty()) PrompterDangerRed else PrompterDangerRed.copy(alpha = 0.38f),
+                    fontSize = 13.sp
+                )
+            }
+
+            if (hasDraftBackup) {
+                OutlinedButton(
+                    onClick = onRestoreDraft,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("恢复备份", fontSize = 13.sp)
+                }
             }
         }
 
@@ -254,28 +293,10 @@ fun EditorScreen(
 /**
  * Reads a user-picked text file supporting UTF-8 (with optional BOM) and GB18030/GBK fallback.
  */
-fun readTxtFileSmart(context: Context, uri: Uri): String? {
-    return try {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-        val contentBytes = if (bytes.size >= 3 &&
-            bytes[0] == 0xEF.toByte() &&
-            bytes[1] == 0xBB.toByte() &&
-            bytes[2] == 0xBF.toByte()
-        ) {
-            bytes.copyOfRange(3, bytes.size)
-        } else {
-            bytes
-        }
-
-        try {
-            val decoder = Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-            decoder.decode(ByteBuffer.wrap(contentBytes)).toString()
-        } catch (_: Exception) {
-            Charset.forName("GB18030").decode(ByteBuffer.wrap(contentBytes)).toString()
-        }
-    } catch (_: Exception) {
-        null
-    }
+fun readTxtFileSmart(context: Context, uri: Uri): String? = try {
+    context.contentResolver.openInputStream(uri)?.use { readBoundedTxt(it) }
+} catch (_: java.io.IOException) {
+    null
+} catch (_: SecurityException) {
+    null
 }

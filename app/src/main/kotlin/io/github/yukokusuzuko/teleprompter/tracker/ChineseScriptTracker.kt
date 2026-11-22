@@ -55,7 +55,13 @@ class ChineseScriptTracker(val rawScript: String) {
     fun jumpToRawOffset(rawOffset: Int): Int {
         if (tokens.isEmpty()) return 0
         val idx = tokens.indexOfFirst { it.rawEndOffset > rawOffset }
-        tokenCursor = if (idx >= 0) idx else tokens.lastIndex
+        return jumpToTokenIndex(if (idx >= 0) idx else tokens.lastIndex)
+    }
+
+    fun stepForward(): Int = jumpToTokenIndex(tokenCursor + 1)
+
+    fun jumpToTokenIndex(index: Int): Int {
+        tokenCursor = index.coerceIn(0, tokens.lastIndex.coerceAtLeast(0))
         adaptiveCursor = tokenCursor.toFloat()
         pendingJumpTarget = -1
         return currentRawOffset()

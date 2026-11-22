@@ -43,6 +43,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TeleprompterViewModel by viewModels()
+    private var scriptImportRequest = 0L
 
     // Volume-up + volume-down chord tracking for touch-lock toggle
     private var isVolumeUpPressed = false
@@ -67,13 +68,26 @@ class MainActivity : ComponentActivity() {
             val txtPickerLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument()
             ) { uri ->
+                val request = ++scriptImportRequest
                 if (uri != null) {
-                    val text = readTxtFileSmart(this, uri)
-                    if (text != null) {
-                        viewModel.updateScript(text.trim())
-                        viewModel.showEditorMessage("已导入文件（${text.trim().length} 字）")
-                    } else {
-                        viewModel.showEditorMessage("文件读取失败，请确认是纯文本 .txt 文件")
+                    val draftAtSelection = viewModel.uiState.value.script
+                    lifecycleScope.launch {
+                        val text = withContext(Dispatchers.IO) {
+                            readTxtFileSmart(applicationContext, uri)
+                        }
+                        if (request != scriptImportRequest) return@launch
+                        val current = viewModel.uiState.value
+                        when {
+                            text == null -> viewModel.showEditorMessage(
+                                "未导入，原台词未更改。请选择可读取的非空 UTF-8 或 GB18030 文本（最多 1 MiB）"
+                            )
+                            current.isPrompterActive || current.script != draftAtSelection ->
+                                viewModel.showEditorMessage("编辑状态已改变，未替换台词。请重新导入文件")
+                            else -> {
+                                viewModel.replaceDraft(text)
+                                viewModel.showEditorMessage("已导入文件（${text.length} 字）")
+                            }
+                        }
                     }
                 }
             }
@@ -180,6 +194,10 @@ class MainActivity : ComponentActivity() {
                         EditorScreen(
                             script = state.script,
                             onScriptChange = viewModel::updateScript,
+                            onPasteScript = viewModel::replaceDraft,
+                            onClearDraft = viewModel::clearDraft,
+                            hasDraftBackup = state.hasDraftBackup,
+                            onRestoreDraft = viewModel::restoreDraft,
                             onLoadSample = viewModel::loadSampleScript,
                             onOpenTxtPicker = {
                                 txtPickerLauncher.launch(arrayOf("text/plain", "text/*", "*/*"))
