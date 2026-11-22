@@ -161,9 +161,9 @@ class ChineseScriptTracker(val rawScript: String) {
 
     /**
      * Speed-adaptive follow mode: advances smoothly by newly recognized token count ([deltaSpokenTokens])
-     * while speaking so paraphrasing never stalls, calibrates within the immediate neighborhood
-     * ([-18, +14] tokens around the pre-advance cursor), and supports confirmed far jumps across
-     * [-64, +64] tokens while guarding against duplicate phrases.
+     * while speaking so paraphrasing never stalls, calibrates conservatively within the immediate
+     * neighborhood ([-10, +12] tokens), and supports confirmed far jumps across [-64, +64] tokens
+     * while guarding against duplicate phrases.
      */
     fun updateAdaptive(
         recentAsrText: String,
@@ -181,13 +181,13 @@ class ChineseScriptTracker(val rawScript: String) {
             tokenCursor = adaptiveCursor.toInt().coerceIn(0, tokens.lastIndex)
         }
 
-        // 2. Local anchor calibration (anchored against pre-advance cursor so 1-line retakes stay reachable)
+        // 2. Conservative local anchor calibration (requires >= 5 spoken tokens, tight +/- range)
         val allSpoken = tokenize(recentAsrText)
         if (allSpoken.size >= ADAPTIVE_ANCHOR_MIN_TOKENS) {
-            val backMargin = if (allowRollback) LOCAL_ROLLBACK_TOKENS else 4
+            val backMargin = if (allowRollback) ADAPTIVE_LOCAL_ROLLBACK_TOKENS else 4
             val tail = allSpoken.takeLast(TAIL_MAX_TOKENS)
-            val localMinCursor = max(0, min(previousCursor, tokenCursor) - backMargin)
-            val localMaxCursor = min(tokens.lastIndex, tokenCursor + 14)
+            val localMinCursor = max(0, tokenCursor - backMargin)
+            val localMaxCursor = min(tokens.lastIndex, tokenCursor + 12)
             val localAnchor = alignWindow(
                 spokenTokens = tail,
                 minAllowedEndCursor = localMinCursor,
@@ -243,13 +243,20 @@ class ChineseScriptTracker(val rawScript: String) {
             maxEndCursor = min(tokens.lastIndex, tokenCursor + FAR_LOOKAHEAD_TOKENS),
             allowRollback = allowRollback,
             looseFollow = looseFollow,
-            overrideMinConfidence = 0.90f,
-            distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN
+            overrideMinConfidence = 0.92f,
+            distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN,
+            backwardBias = BACKWARD_BIAS,
+            filterBeforeSelect = true
         ) ?: return false
 
         if (abs(farCandidate - localCandidate) <= 12) return false
 
-        applyConfirmedFarCandidate(farCandidate)
+        val snapped = applyConfirmedFarCandidate(farCandidate)
+        if (!snapped) {
+            // Keep forward responsiveness active while waiting for the 2nd confirmation update.
+            tokenCursor = localCandidate
+            adaptiveCursor = localCandidate.toFloat()
+        }
         return true
     }
 
@@ -271,7 +278,9 @@ class ChineseScriptTracker(val rawScript: String) {
                     allowRollback = allowRollback,
                     looseFollow = looseFollow,
                     overrideMinConfidence = 0.80f,
-                    distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN
+                    distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN,
+                    backwardBias = BACKWARD_BIAS,
+                    filterBeforeSelect = true
                 )
             } else null)
                 ?: (if (allSpoken.size >= TAIL_MAX_TOKENS) {
@@ -282,7 +291,9 @@ class ChineseScriptTracker(val rawScript: String) {
                         allowRollback = allowRollback,
                         looseFollow = looseFollow,
                         overrideMinConfidence = 0.82f,
-                        distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN
+                        distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN,
+                        backwardBias = BACKWARD_BIAS,
+                        filterBeforeSelect = true
                     )
                 } else null)
                 ?: (if (allSpoken.size >= FAR_JUMP_SHORT_TAIL_TOKENS) {
@@ -292,8 +303,10 @@ class ChineseScriptTracker(val rawScript: String) {
                         maxEndCursor = maxCursor,
                         allowRollback = allowRollback,
                         looseFollow = looseFollow,
-                        overrideMinConfidence = 0.86f,
-                        distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN
+                        overrideMinConfidence = 0.92f,
+                        distanceBiasPerToken = FAR_DISTANCE_BIAS_PER_TOKEN,
+                        backwardBias = BACKWARD_BIAS,
+                        filterBeforeSelect = true
                     )
                 } else null)
                 ?: return
@@ -301,22 +314,40 @@ class ChineseScriptTracker(val rawScript: String) {
         applyConfirmedFarCandidate(farCandidate)
     }
 
-    private fun applyConfirmedFarCandidate(farCandidate: Int) {
+    private fun applyConfirmedFarCandidate(farCandidate: Int): Boolean {
         val step = farCandidate - tokenCursor
-        if (abs(step) <= 12) {
-            pendingJumpTarget = -1
-            tokenCursor = farCandidate
-            adaptiveCursor = farCandidate.toFloat()
-            return
+        if (step >= 0) {
+            if (step <= 12) {
+                pendingJumpTarget = -1
+                tokenCursor = farCandidate
+                adaptiveCursor = farCandidate.toFloat()
+                return true
+            }
+
+            if (pendingJumpTarget >= 0 && (farCandidate - pendingJumpTarget) in -2..6) {
+                tokenCursor = farCandidate
+                adaptiveCursor = farCandidate.toFloat()
+                pendingJumpTarget = -1
+                return true
+            }
+
+            pendingJumpTarget = farCandidate
+            return false
         }
 
-        if (pendingJumpTarget >= 0 && (farCandidate - pendingJumpTarget) in -2..6) {
+        // Backward far-jump: ignore tiny 1-4 char fluctuations and always require 2-update
+        // confirmation with positive forward progress (in 1..6 tokens) before rolling back.
+        if (step > -5) return false
+
+        if (pendingJumpTarget >= 0 && (farCandidate - pendingJumpTarget) in 1..6) {
             tokenCursor = farCandidate
             adaptiveCursor = farCandidate.toFloat()
             pendingJumpTarget = -1
-        } else {
-            pendingJumpTarget = farCandidate
+            return true
         }
+
+        pendingJumpTarget = farCandidate
+        return false
     }
 
     private fun advancePastParagraphBreakIfAtEnd() {
@@ -339,7 +370,8 @@ class ChineseScriptTracker(val rawScript: String) {
         looseFollow: Boolean,
         overrideMinConfidence: Float? = null,
         distanceBiasPerToken: Float = LOCAL_DISTANCE_BIAS_PER_TOKEN,
-        backwardBias: Float = BACKWARD_BIAS
+        backwardBias: Float = 0f,
+        filterBeforeSelect: Boolean = false
     ): Int? {
         val m = spokenTokens.size
         if (m < MIN_SPOKEN_TOKENS) return null
@@ -380,6 +412,41 @@ class ChineseScriptTracker(val rawScript: String) {
         }
 
         val minAllowedJ = (minAllowedEndCursor - winStart + 1).coerceIn(1, n)
+        if (!filterBeforeSelect) {
+            var bestJ = -1
+            var bestRawCost = Float.MAX_VALUE
+            var bestBiasedCost = Float.MAX_VALUE
+
+            for (j in minAllowedJ..n) {
+                val rawCost = dp[m][j]
+                val candidateIdx = winStart + j - 1
+                // Mild distance bias prevents duplicate words further away from beating the local match
+                val distanceBias = abs(candidateIdx - tokenCursor) * distanceBiasPerToken
+                val biasedCost = rawCost + distanceBias
+                if (biasedCost < bestBiasedCost) {
+                    bestBiasedCost = biasedCost
+                    bestRawCost = rawCost
+                    bestJ = j
+                }
+            }
+
+            if (bestJ <= 0) return null
+
+            val confidence = 1f - (bestRawCost / m.toFloat())
+            val candidateCursor = (winStart + bestJ - 1).coerceIn(0, tokens.lastIndex)
+            val step = candidateCursor - tokenCursor
+
+            if (!allowRollback && step < 0) return null
+
+            val threshold = overrideMinConfidence ?: when {
+                step > 10 || step < -4 -> if (looseFollow) 0.74f else 0.82f
+                m <= 4 -> 0.72f
+                else -> if (looseFollow) 0.58f else 0.66f
+            }
+
+            return if (confidence >= threshold) candidateCursor else null
+        }
+
         var bestCandidateCursor = -1
         var bestRawCost = Float.MAX_VALUE
         var bestBiasedCost = Float.MAX_VALUE
@@ -404,7 +471,7 @@ class ChineseScriptTracker(val rawScript: String) {
             }
             if (confidence < threshold) continue
 
-            // Mild distance bias + backward bias prevents distant/earlier duplicates from beating local matches
+            // Mild distance bias + backward bias prevents distant/earlier duplicates from beating nearer matches
             val distanceBias = abs(step) * distanceBiasPerToken + if (step < 0) backwardBias else 0f
             val biasedCost = rawCost + distanceBias
             if (biasedCost < bestBiasedCost || (biasedCost == bestBiasedCost && rawCost < bestRawCost)) {
@@ -581,7 +648,8 @@ class ChineseScriptTracker(val rawScript: String) {
         private const val MIN_SPOKEN_TOKENS = 3
         private const val ADAPTIVE_ANCHOR_MIN_TOKENS = 5
         private const val FAR_JUMP_MIN_TOKENS = 6
-        private const val LOCAL_ROLLBACK_TOKENS = 18
+        private const val LOCAL_ROLLBACK_TOKENS = 16
+        private const val ADAPTIVE_LOCAL_ROLLBACK_TOKENS = 10
         private const val LOCAL_LOOKAHEAD_TOKENS = 18
         private const val FAR_ROLLBACK_TOKENS = 64
         private const val FAR_LOOKAHEAD_TOKENS = 64

@@ -337,4 +337,51 @@ class ChineseScriptTrackerTest {
             jumpedBack < script.indexOf("岸边微风")
         )
     }
+
+    @Test
+    fun strictMode_noisyForwardReadPastTenChars_doesNotFreezeAtCurrentCursor() {
+        val script = "开始测试这台机器，嗯这个先看吧，调整一下参数再确认最终画面色彩。"
+        val tracker = ChineseScriptTracker(script)
+
+        tracker.updateFromSpeech("开始测试这台机器嗯这个")
+        val cursorAtZheGe = tracker.currentRawOffset()
+        assertTrue("Should advance to 嗯这个, got $cursorAtZheGe", cursorAtZheGe >= script.indexOf("这"))
+
+        // Near step=+1..+3 shares "这个先看吧", while step=+12 has "数再确认最" (3 noisy prefix tokens -> 0.7375 < 0.74).
+        // Per-candidate filtering would fall back to the weak step=+2 match instead of letting shortMatch unstick to step=+12.
+        val recovered = tracker.updateFromSpeech("测试机器嗯这个哪词条确认最终画")
+        assertTrue(
+            "Forward read past 10 chars with mild prefix noise must advance past 参数, got $recovered",
+            recovered >= script.indexOf("确")
+        )
+    }
+
+    @Test
+    fun adaptiveMode_noisyForwardReading_neverGetsYankedBackwardByShortTail() {
+        val script = "今天我们来聊一聊这台机器的外观手感、对焦速度以及夜景画质表现。"
+        val tracker = ChineseScriptTracker(script)
+
+        tracker.updateAdaptive("今天我们来聊一聊", deltaSpokenTokens = 8)
+        var prevOffset = tracker.updateAdaptive("聊一聊这台机器的外观", deltaSpokenTokens = 7)
+        assertTrue("Expected cursor near 外观, got $prevOffset", prevOffset >= script.indexOf("外"))
+
+        // Paraphrased / slightly misheard forward updates carrying 5 prior chars + 1 skipped new char must never pull cursor backward
+        val updates = listOf(
+            "机器的外观手吧" to 2,
+            "外观手感微调焦" to 2,
+            "感微调焦挺快的" to 2,
+            "焦挺快的看夜景" to 2,
+            "快看夜景画质表现" to 4
+        )
+        for ((asr, delta) in updates) {
+            val nextOffset = tracker.updateAdaptive(asr, deltaSpokenTokens = delta)
+            assertTrue(
+                "Adaptive forward reading ('$asr') must not pull cursor backward ($nextOffset < $prevOffset)",
+                nextOffset >= prevOffset
+            )
+            prevOffset = nextOffset
+        }
+
+        assertTrue("Should finish cleanly at 夜景画质表现, got $prevOffset", prevOffset >= script.indexOf("表"))
+    }
 }
