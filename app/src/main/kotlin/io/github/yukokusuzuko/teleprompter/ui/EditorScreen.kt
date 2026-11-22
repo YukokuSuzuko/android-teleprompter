@@ -143,7 +143,7 @@ fun EditorScreen(
                 onClick = {
                     val cm = context.getSystemService(ClipboardManager::class.java)
                     val clip = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                    if (clip.isNullOrEmpty()) {
+                    if (clip.isNullOrBlank()) {
                         onShowMessage("剪贴板里没有文字")
                     } else {
                         onPasteScript(clip)
@@ -191,7 +191,11 @@ fun EditorScreen(
                 border = BorderStroke(1.dp, cs.outlineVariant),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text("清空", color = PrompterDangerRed, fontSize = 13.sp)
+                Text(
+                    text = "清空",
+                    color = if (script.isNotEmpty()) PrompterDangerRed else PrompterDangerRed.copy(alpha = 0.38f),
+                    fontSize = 13.sp
+                )
             }
 
             if (hasDraftBackup) {
