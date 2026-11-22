@@ -11,6 +11,7 @@
 ## 核心特性
 
 - **纯离线中文语音跟读**：内置 `Sherpa-onnx` 中文流式 Zipformer 语音识别 + 无声调模糊拼音局部对齐引擎，支持语速自适应、精准锚点与备用匀速三种模式，断网环境依然稳定跟读。
+- **多稿件库管理**：支持新建 / 切换 / 重命名 / 删除多篇稿件、关键词搜索、常用稿件置顶、`.txt` 直接导入为新稿件，以及单稿清空 / 覆盖后的备份一键恢复。
 - **防串行、防乱跳与高刷平滑滚屏**：
   - 自动请求设备当前分辨率最高刷新率（90/120/144Hz），帧同步阻尼平滑追赶；
   - 支持上方保留已读行数（0 / 1 / 2 行）、动态缩放居中左侧焦点条、暂停自由拖动、NG 重念自动回退、点击任意文字跳转，以及跟读中拖动自动回位轻提示（带一键暂停）。
@@ -30,7 +31,7 @@
 
 ## 下载安装
 
-前往 [Releases 页面](https://github.com/YukokuSuzuko/android-teleprompter/releases/latest) 下载最新的 `android-teleprompter-v1.2.1-arm64.apk`（已内置离线中文语音识别模型，安装即用，支持 Android 8.0+ / arm64-v8a 设备）。
+前往 [Releases 页面](https://github.com/YukokuSuzuko/android-teleprompter/releases/latest) 下载最新的 `android-teleprompter-v1.4-arm64.apk`（已内置离线中文语音识别模型，安装即用，支持 Android 8.0+ / arm64-v8a 设备）。
 
 ## 本地编译准备（离线模型未入库）
 
