@@ -9,6 +9,10 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+private val SCRIPT_FILLER_PARTICLES = setOf(
+    "a", "o", "e", "en", "na", "ne", "ba", "ma", "ya", "le", "de", "jiu"
+)
+
 /**
  * Represents one spoken syllable/unit extracted from the script, mapped back to its
  * exact character index in the raw script string.
@@ -17,7 +21,10 @@ data class ScriptToken(
     val rawOffset: Int,
     val rawEndOffset: Int,
     val pinyins: Set<String>
-)
+) {
+    internal val pinyinArray: Array<String> = pinyins.toTypedArray()
+    internal val isFiller: Boolean = pinyinArray.any { it in SCRIPT_FILLER_PARTICLES }
+}
 
 /**
  * Pure-Chinese streaming speech-to-script alignment engine.
@@ -225,6 +232,24 @@ class ChineseScriptTracker(val rawScript: String) {
         looseFollow: Boolean
     ): Boolean {
         if (allSpoken.size < FAR_JUMP_CONTEXT_TOKENS) return false
+        val backLimit = if (allowRollback) FAR_ROLLBACK_TOKENS else 0
+        val farMin = max(0, tokenCursor - backLimit)
+        val farMax = min(tokens.lastIndex, tokenCursor + FAR_LOOKAHEAD_TOKENS)
+
+        val lastSpoken = allSpoken[allSpoken.lastIndex].pinyinArray
+        val prevSpoken = allSpoken[allSpoken.lastIndex - 1].pinyinArray
+        var hasExternalTailMatch = false
+        for (k in max(1, farMin)..farMax) {
+            if (k in localMinCursor..localMaxCursor) continue
+            if (phoneticSubstitutionCost(tokens[k].pinyinArray, lastSpoken, looseFollow) <= 0.45f &&
+                phoneticSubstitutionCost(tokens[k - 1].pinyinArray, prevSpoken, looseFollow) <= 0.45f
+            ) {
+                hasExternalTailMatch = true
+                break
+            }
+        }
+        if (!hasExternalTailMatch) return false
+
         val longTail = allSpoken.takeLast(FAR_JUMP_CONTEXT_TOKENS)
         val localLongMatch = alignWindow(
             spokenTokens = longTail,
@@ -236,11 +261,10 @@ class ChineseScriptTracker(val rawScript: String) {
         )
         if (localLongMatch != null) return false
 
-        val backLimit = if (allowRollback) FAR_ROLLBACK_TOKENS else 0
         val farCandidate = alignWindow(
             spokenTokens = longTail,
-            minAllowedEndCursor = max(0, tokenCursor - backLimit),
-            maxEndCursor = min(tokens.lastIndex, tokenCursor + FAR_LOOKAHEAD_TOKENS),
+            minAllowedEndCursor = farMin,
+            maxEndCursor = farMax,
             allowRollback = allowRollback,
             looseFollow = looseFollow,
             overrideMinConfidence = 0.92f,
@@ -386,29 +410,26 @@ class ChineseScriptTracker(val rawScript: String) {
         val baseSkipSpokenCost = if (looseFollow) 0.70f else 1.0f
         val baseSkipScriptCost = if (looseFollow) 0.60f else 1.0f
 
-        val dp = Array(m + 1) { FloatArray(n + 1) }
-        for (i in 1..m) {
-            val spokenStepCost = if (looseFollow && isFillerParticle(spokenTokens[i - 1].pinyins)) {
-                0.35f
-            } else {
-                baseSkipSpokenCost
-            }
-            dp[i][0] = dp[i - 1][0] + spokenStepCost
-        }
-
-        for (i in 1..m) {
-            val spokenSet = spokenTokens[i - 1].pinyins
-            val spokenSkipCost = if (looseFollow && isFillerParticle(spokenSet)) 0.35f else baseSkipSpokenCost
+        var prevRow = FloatArray(n + 1)
+        var currRow = FloatArray(n + 1)
+        for (i in 0 until m) {
+            val spokenToken = spokenTokens[i]
+            val spokenPinyins = spokenToken.pinyinArray
+            val spokenSkipCost = if (looseFollow && spokenToken.isFiller) 0.35f else baseSkipSpokenCost
+            currRow[0] = prevRow[0] + spokenSkipCost
             for (j in 1..n) {
-                val targetSet = window[j - 1].pinyins
-                val scriptSkipCost = if (looseFollow && isFillerParticle(targetSet)) 0.35f else baseSkipScriptCost
-                val subCost = phoneticSubstitutionCost(spokenSet, targetSet, looseFollow)
-                dp[i][j] = minOf(
-                    dp[i - 1][j - 1] + subCost,
-                    dp[i - 1][j] + spokenSkipCost,
-                    dp[i][j - 1] + scriptSkipCost
+                val targetToken = window[j - 1]
+                val scriptSkipCost = if (looseFollow && targetToken.isFiller) 0.35f else baseSkipScriptCost
+                val subCost = phoneticSubstitutionCost(spokenPinyins, targetToken.pinyinArray, looseFollow)
+                currRow[j] = minOf(
+                    prevRow[j - 1] + subCost,
+                    prevRow[j] + spokenSkipCost,
+                    currRow[j - 1] + scriptSkipCost
                 )
             }
+            val tmp = prevRow
+            prevRow = currRow
+            currRow = tmp
         }
 
         val minAllowedJ = (minAllowedEndCursor - winStart + 1).coerceIn(1, n)
@@ -418,7 +439,7 @@ class ChineseScriptTracker(val rawScript: String) {
             var bestBiasedCost = Float.MAX_VALUE
 
             for (j in minAllowedJ..n) {
-                val rawCost = dp[m][j]
+                val rawCost = prevRow[j]
                 val candidateIdx = winStart + j - 1
                 // Mild distance bias prevents duplicate words further away from beating the local match
                 val distanceBias = abs(candidateIdx - tokenCursor) * distanceBiasPerToken
@@ -456,7 +477,7 @@ class ChineseScriptTracker(val rawScript: String) {
             val step = candidateCursor - tokenCursor
             if (!allowRollback && step < 0) continue
 
-            val rawCost = dp[m][j]
+            val rawCost = prevRow[j]
             val confidence = 1f - (rawCost / m.toFloat())
             val defaultThreshold = when {
                 step > 10 || step < -4 -> if (looseFollow) 0.74f else 0.82f
@@ -485,16 +506,22 @@ class ChineseScriptTracker(val rawScript: String) {
     }
 
     private fun phoneticSubstitutionCost(
-        a: Set<String>,
-        b: Set<String>,
+        a: Array<String>,
+        b: Array<String>,
         looseFollow: Boolean
     ): Float {
-        if (a.any { it in b }) return 0f
+        for (i in a.indices) {
+            val pa = a[i]
+            for (j in b.indices) {
+                if (pa == b[j]) return 0f
+            }
+        }
         if (!looseFollow) return 1f
 
-        for (pa in a) {
-            for (pb in b) {
-                if (editDistanceAtMostOne(pa, pb)) return 0.45f
+        for (i in a.indices) {
+            val pa = a[i]
+            for (j in b.indices) {
+                if (editDistanceAtMostOne(pa, b[j])) return 0.45f
             }
         }
         return 1f
@@ -636,9 +663,6 @@ class ChineseScriptTracker(val rawScript: String) {
         return s
     }
 
-    private fun isFillerParticle(pinyins: Set<String>): Boolean =
-        pinyins.any { it in FILLER_PARTICLES }
-
     private fun isCjk(ch: Char): Boolean = ch.code in 0x4E00..0x9FFF
 
     companion object {
@@ -656,10 +680,6 @@ class ChineseScriptTracker(val rawScript: String) {
         private const val LOCAL_DISTANCE_BIAS_PER_TOKEN = 0.025f
         private const val FAR_DISTANCE_BIAS_PER_TOKEN = 0.015f
         private const val BACKWARD_BIAS = 0.20f
-
-        private val FILLER_PARTICLES = setOf(
-            "a", "o", "e", "en", "na", "ne", "ba", "ma", "ya", "le", "de", "jiu"
-        )
 
         private val DIGIT_PINYIN = arrayOf(
             "ling", "yi", "er", "san", "si", "wu", "liu", "qi", "ba", "jiu"

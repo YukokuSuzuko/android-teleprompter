@@ -96,7 +96,7 @@ class StreamingAsrEngine(private val context: Context) {
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                minBufBytes * 2
+                maxOf(minBufBytes * 4, SAMPLE_RATE * 2)
             )
         } catch (e: Exception) {
             onError("麦克风启动失败: ${e.message}")
